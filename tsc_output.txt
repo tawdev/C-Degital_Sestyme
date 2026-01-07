@@ -1,0 +1,12 @@
+﻿app/(main)/employees/page.tsx(63,59): error TS2322: Type '(formData: FormData) => Promise<{ error: string; } | undefined>' is not assignable to type 'string | ((formData: FormData) => void | Promise<void>) | undefined'.
+  Type '(formData: FormData) => Promise<{ error: string; } | undefined>' is not assignable to type '(formData: FormData) => void | Promise<void>'.
+    Type 'Promise<{ error: string; } | undefined>' is not assignable to type 'void | Promise<void>'.
+      Type 'Promise<{ error: string; } | undefined>' is not assignable to type 'Promise<void>'.
+        Type '{ error: string; } | undefined' is not assignable to type 'void'.
+          Type '{ error: string; }' is not assignable to type 'void'.
+app/(main)/projects/page.tsx(85,63): error TS2322: Type '(formData: FormData) => Promise<{ error: string; } | undefined>' is not assignable to type 'string | ((formData: FormData) => void | Promise<void>) | undefined'.
+  Type '(formData: FormData) => Promise<{ error: string; } | undefined>' is not assignable to type '(formData: FormData) => void | Promise<void>'.
+    Type 'Promise<{ error: string; } | undefined>' is not assignable to type 'void | Promise<void>'.
+      Type 'Promise<{ error: string; } | undefined>' is not assignable to type 'Promise<void>'.
+        Type '{ error: string; } | undefined' is not assignable to type 'void'.
+          Type '{ error: string; }' is not assignable to type 'void'.

@@ -1,0 +1,377 @@
+﻿
+> init_temp@0.1.0 build
+> next build
+
+  Ôû▓ Next.js 14.2.35
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+node.exe : Failed to 
+compile.
+At C:\Program Files\n
+odejs\npm.ps1:29 
+char:3
++   & $NODE_EXE 
+$NPM_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~
+    + CategoryInfo   
+           : NotSpe  
+  cified: (Failed    
+ to compile.:Stri    
+ng) [], RemoteEx    
+ception
+    + FullyQualified 
+   ErrorId : Native  
+  CommandError
+ 
+
+./app/globals.css.web
+pack[javascript/auto]
+!=!./node_modules/nex
+t/dist/build/webpack/
+loaders/css-loader/sr
+c/index.js??ruleSet[1
+].rules[14].oneOf[12]
+.use[2]!./node_module
+s/next/dist/build/web
+pack/loaders/postcss-
+loader/src/index.js??
+ruleSet[1].rules[14].
+oneOf[12].use[3]!./ap
+p/globals.css
+Error: It looks like 
+you're trying to use 
+`tailwindcss` 
+directly as a 
+PostCSS plugin. The 
+PostCSS plugin has 
+moved to a separate 
+package, so to 
+continue using 
+Tailwind CSS with 
+PostCSS you'll need 
+to install `@tailwind
+css/postcss` and 
+update your PostCSS 
+configuration.
+    at lt (C:\Users\p
+c\Desktop\sestymeTaw1
+0\node_modules\tailwi
+ndcss\dist\lib.js:38:
+1643)
+    at 
+LazyResult.runOnRoot 
+(C:\Users\pc\Desktop\
+sestymeTaw10\node_mod
+ules\next\node_module
+s\postcss\lib\lazy-re
+sult.js:329:16)
+    at 
+LazyResult.runAsync (
+C:\Users\pc\Desktop\s
+estymeTaw10\node_modu
+les\next\node_modules
+\postcss\lib\lazy-res
+ult.js:258:26)
+    at 
+LazyResult.async (C:\
+Users\pc\Desktop\sest
+ymeTaw10\node_modules
+\next\node_modules\po
+stcss\lib\lazy-result
+.js:160:30)
+    at 
+LazyResult.then (C:\U
+sers\pc\Desktop\sesty
+meTaw10\node_modules\
+next\node_modules\pos
+tcss\lib\lazy-result.
+js:404:17)
+
+Import trace for 
+requested module:
+./app/globals.css.web
+pack[javascript/auto]
+!=!./node_modules/nex
+t/dist/build/webpack/
+loaders/css-loader/sr
+c/index.js??ruleSet[1
+].rules[14].oneOf[12]
+.use[2]!./node_module
+s/next/dist/build/web
+pack/loaders/postcss-
+loader/src/index.js??
+ruleSet[1].rules[14].
+oneOf[12].use[3]!./ap
+p/globals.css
+./app/globals.css
+
+./app/globals.css
+Error: It looks like 
+you're trying to use 
+`tailwindcss` 
+directly as a 
+PostCSS plugin. The 
+PostCSS plugin has 
+moved to a separate 
+package, so to 
+continue using 
+Tailwind CSS with 
+PostCSS you'll need 
+to install `@tailwind
+css/postcss` and 
+update your PostCSS 
+configuration.
+    at lt (C:\Users\p
+c\Desktop\sestymeTaw1
+0\node_modules\tailwi
+ndcss\dist\lib.js:38:
+1643)
+    at 
+LazyResult.runOnRoot 
+(C:\Users\pc\Desktop\
+sestymeTaw10\node_mod
+ules\next\node_module
+s\postcss\lib\lazy-re
+sult.js:329:16)
+    at 
+LazyResult.runAsync (
+C:\Users\pc\Desktop\s
+estymeTaw10\node_modu
+les\next\node_modules
+\postcss\lib\lazy-res
+ult.js:258:26)
+    at 
+LazyResult.async (C:\
+Users\pc\Desktop\sest
+ymeTaw10\node_modules
+\next\node_modules\po
+stcss\lib\lazy-result
+.js:160:30)
+    at 
+LazyResult.then (C:\U
+sers\pc\Desktop\sesty
+meTaw10\node_modules\
+next\node_modules\pos
+tcss\lib\lazy-result.
+js:404:17)
+    at 
+tryRunOrWebpackError 
+(C:\Users\pc\Desktop\
+sestymeTaw10\node_mod
+ules\next\dist\compil
+ed\webpack\bundle5.js
+:28:312989)
+    at __webpack_requ
+ire_module__ (C:\User
+s\pc\Desktop\sestymeT
+aw10\node_modules\nex
+t\dist\compiled\webpa
+ck\bundle5.js:28:1311
+65)
+    at __nested_webpa
+ck_require_153728__ (
+C:\Users\pc\Desktop\s
+estymeTaw10\node_modu
+les\next\dist\compile
+d\webpack\bundle5.js:
+28:130607)
+    at C:\Users\pc\De
+sktop\sestymeTaw10\no
+de_modules\next\dist\
+compiled\webpack\bund
+le5.js:28:131454
+    at 
+symbolIterator (C:\Us
+ers\pc\Desktop\sestym
+eTaw10\node_modules\n
+ext\dist\compiled\neo
+-async\async.js:1:144
+44)
+    at done (C:\Users
+\pc\Desktop\sestymeTa
+w10\node_modules\next
+\dist\compiled\neo-as
+ync\async.js:1:14824)
+    at Hook.eval [as 
+callAsync] (eval at 
+create (C:\Users\pc\D
+esktop\sestymeTaw10\n
+ode_modules\next\dist
+\compiled\webpack\bun
+dle5.js:13:28858), 
+<anonymous>:15:1)
+    at Hook.CALL_ASYN
+C_DELEGATE [as 
+_callAsync] (C:\Users
+\pc\Desktop\sestymeTa
+w10\node_modules\next
+\dist\compiled\webpac
+k\bundle5.js:13:26012
+)
+    at C:\Users\pc\De
+sktop\sestymeTaw10\no
+de_modules\next\dist\
+compiled\webpack\bund
+le5.js:28:130328
+    at 
+symbolIterator (C:\Us
+ers\pc\Desktop\sestym
+eTaw10\node_modules\n
+ext\dist\compiled\neo
+-async\async.js:1:144
+02)
+-- inner error --
+Error: It looks like 
+you're trying to use 
+`tailwindcss` 
+directly as a 
+PostCSS plugin. The 
+PostCSS plugin has 
+moved to a separate 
+package, so to 
+continue using 
+Tailwind CSS with 
+PostCSS you'll need 
+to install `@tailwind
+css/postcss` and 
+update your PostCSS 
+configuration.
+    at lt (C:\Users\p
+c\Desktop\sestymeTaw1
+0\node_modules\tailwi
+ndcss\dist\lib.js:38:
+1643)
+    at 
+LazyResult.runOnRoot 
+(C:\Users\pc\Desktop\
+sestymeTaw10\node_mod
+ules\next\node_module
+s\postcss\lib\lazy-re
+sult.js:329:16)
+    at 
+LazyResult.runAsync (
+C:\Users\pc\Desktop\s
+estymeTaw10\node_modu
+les\next\node_modules
+\postcss\lib\lazy-res
+ult.js:258:26)
+    at 
+LazyResult.async (C:\
+Users\pc\Desktop\sest
+ymeTaw10\node_modules
+\next\node_modules\po
+stcss\lib\lazy-result
+.js:160:30)
+    at 
+LazyResult.then (C:\U
+sers\pc\Desktop\sesty
+meTaw10\node_modules\
+next\node_modules\pos
+tcss\lib\lazy-result.
+js:404:17)
+    at 
+Object.<anonymous> (C
+:\Users\pc\Desktop\se
+stymeTaw10\node_modul
+es\next\dist\build\we
+bpack\loaders\css-loa
+der\src\index.js??rul
+eSet[1].rules[14].one
+Of[12].use[2]!C:\User
+s\pc\Desktop\sestymeT
+aw10\node_modules\nex
+t\dist\build\webpack\
+loaders\postcss-loade
+r\src\index.js??ruleS
+et[1].rules[14].oneOf
+[12].use[3]!C:\Users\
+pc\Desktop\sestymeTaw
+10\app\globals.css:1:
+7)
+    at C:\Users\pc\De
+sktop\sestymeTaw10\no
+de_modules\next\dist\
+compiled\webpack\bund
+le5.js:28:922493
+    at Hook.eval [as 
+call] (eval at 
+create (C:\Users\pc\D
+esktop\sestymeTaw10\n
+ode_modules\next\dist
+\compiled\webpack\bun
+dle5.js:13:28636), 
+<anonymous>:7:1)
+    at 
+Hook.CALL_DELEGATE 
+[as _call] (C:\Users\
+pc\Desktop\sestymeTaw
+10\node_modules\next\
+dist\compiled\webpack
+\bundle5.js:13:25906)
+    at C:\Users\pc\De
+sktop\sestymeTaw10\no
+de_modules\next\dist\
+compiled\webpack\bund
+le5.js:28:131198
+    at 
+tryRunOrWebpackError 
+(C:\Users\pc\Desktop\
+sestymeTaw10\node_mod
+ules\next\dist\compil
+ed\webpack\bundle5.js
+:28:312943)
+    at __webpack_requ
+ire_module__ (C:\User
+s\pc\Desktop\sestymeT
+aw10\node_modules\nex
+t\dist\compiled\webpa
+ck\bundle5.js:28:1311
+65)
+    at __nested_webpa
+ck_require_153728__ (
+C:\Users\pc\Desktop\s
+estymeTaw10\node_modu
+les\next\dist\compile
+d\webpack\bundle5.js:
+28:130607)
+    at C:\Users\pc\De
+sktop\sestymeTaw10\no
+de_modules\next\dist\
+compiled\webpack\bund
+le5.js:28:131454
+    at 
+symbolIterator (C:\Us
+ers\pc\Desktop\sestym
+eTaw10\node_modules\n
+ext\dist\compiled\neo
+-async\async.js:1:144
+44)
+
+Generated code for C:
+\Users\pc\Desktop\ses
+tymeTaw10\node_module
+s\next\dist\build\web
+pack\loaders\css-load
+er\src\index.js??rule
+Set[1].rules[14].oneO
+f[12].use[2]!C:\Users
+\pc\Desktop\sestymeTa
+w10\node_modules\next
+\dist\build\webpack\l
+oaders\postcss-loader
+\src\index.js??ruleSe
+t[1].rules[14].oneOf[
+12].use[3]!C:\Users\p
+c\Desktop\sestymeTaw1
+0\app\globals.css
+
+Import trace for 
+requested module:
+./app/globals.css
+
+
+> Build failed 
+because of webpack 
+errors
