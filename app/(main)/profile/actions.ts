@@ -15,6 +15,8 @@ export async function updateProfile(formData: FormData) {
         phone: formData.get('phone') as string,
         avatar_url: formData.get('avatar_url') as string,
         date_of_birth: formData.get('date_of_birth') as string || null,
+        specialization: formData.getAll('specialization') as string[],
+        skills: formData.getAll('skills') as string[],
     }
 
     const adminClient = createAdminClient()

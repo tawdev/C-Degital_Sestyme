@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
-import { Trash2, Edit, UserPlus, Mail, Phone, Briefcase } from 'lucide-react'
+import { Trash2, Edit, UserPlus, Mail, Phone, Briefcase, Eye } from 'lucide-react'
 import { deleteEmployee } from './actions'
 import { getSession } from '@/app/auth/actions'
 import { redirect } from 'next/navigation'
@@ -161,13 +161,20 @@ export default async function EmployeesPage() {
                                         )}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                        <div className="flex justify-end gap-2">
+                                        <div className="flex justify-end gap-2 text-right">
+                                            <Link
+                                                href={`/employees/${employee.id}/view`}
+                                                className="inline-flex items-center gap-1 px-2 py-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                                                title="Voir"
+                                            >
+                                                <Eye className="h-4 w-4" />
+                                            </Link>
                                             <Link
                                                 href={`/employees/${employee.id}`}
                                                 className="inline-flex items-center gap-1 px-3 py-1.5 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 rounded-lg transition-colors"
                                             >
                                                 <Edit className="h-4 w-4" />
-                                                Edit
+
                                             </Link>
                                             <form action={deleteEmployee}>
                                                 <input type="hidden" name="id" value={employee.id} />
@@ -176,7 +183,7 @@ export default async function EmployeesPage() {
                                                     className="inline-flex items-center gap-1 px-3 py-1.5 text-red-600 hover:text-red-900 hover:bg-red-50 rounded-lg transition-colors"
                                                 >
                                                     <Trash2 className="h-4 w-4" />
-                                                    Delete
+
                                                 </button>
                                             </form>
                                         </div>

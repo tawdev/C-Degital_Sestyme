@@ -67,9 +67,6 @@ export async function updateEmployee(formData: FormData) {
         full_name: fullName,
         role: formData.get('role') as string,
         email: email,
-        phone: formData.get('phone') as string,
-        avatar_url: formData.get('avatar_url') as string,
-        date_of_birth: formData.get('date_of_birth') as string || null,
     }
 
     // Only update password if provided

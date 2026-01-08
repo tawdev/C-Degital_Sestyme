@@ -2,15 +2,10 @@ import { createClient } from '@/lib/supabase/server'
 import { getSession } from '@/app/auth/actions'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Calendar, Globe, User, TrendingUp, CheckCircle2, MessageSquare } from 'lucide-react'
+import { ArrowLeft, Calendar, Globe, User, TrendingUp, CheckCircle2, MessageSquare, Clock, BarChart3, Layout } from 'lucide-react'
 import NotesSection from './notes-section'
 
 export default async function ProjectDetailPage({ params }: { params: { id: string } }) {
-    // ────────────────────────────────────────────
-    // التحقق من المصادقة
-    // Authentication check
-    // ────────────────────────────────────────────
-
     const session = await getSession()
 
     if (!session) {
@@ -19,11 +14,7 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
 
     const supabase = createClient()
 
-    // ────────────────────────────────────────────
-    // جلب بيانات المشروع والملاحظات
     // Fetch project and notes data
-    // ────────────────────────────────────────────
-
     const [projectRes, notesRes] = await Promise.all([
         supabase
             .from('projects')
@@ -44,175 +35,205 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
         notFound()
     }
 
-    // معلومات صاحب المشروع
-    // Project owner info
     const projectOwner = Array.isArray(project.employees)
         ? project.employees[0]
         : project.employees
 
     return (
-        <div className="max-w-5xl mx-auto space-y-6">
-            {/* Header with back button */}
-            <div className="flex items-center gap-4">
+        <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {/* Header Navigation */}
+            <div className="flex items-center justify-between">
                 <Link
                     href="/projects"
-                    className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+                    className="group inline-flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-indigo-600 transition-all"
                 >
-                    <ArrowLeft className="h-5 w-5" />
-                    <span>Back to Projects</span>
+                    <div className="p-2 bg-white rounded-lg border border-gray-100 shadow-sm group-hover:shadow group-hover:border-indigo-100 transition-all">
+                        <ArrowLeft className="h-4 w-4" />
+                    </div>
+                    <span>Retour aux Projets</span>
                 </Link>
+
+                <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase tracking-[0.2em] rounded-full border border-indigo-100">
+                        Détails du Projet
+                    </span>
+                </div>
             </div>
 
-            {/* Project Details Card */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                {/* Header */}
-                <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-8 text-white">
-                    <h1 className="text-3xl font-bold mb-2">{project.project_name}</h1>
-                    {project.domain_name && (
-                        <a
-                            href={project.domain_name.startsWith('http') ? project.domain_name : `https://${project.domain_name}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 text-indigo-100 hover:text-white transition-colors"
-                        >
-                            <Globe className="h-4 w-4" />
-                            <span className="hover:underline">{project.domain_name}</span>
-                        </a>
-                    )}
-                </div>
+            {/* Main Project Card */}
+            <div className="bg-white rounded-3xl shadow-xl shadow-indigo-900/5 border border-gray-100 overflow-hidden">
+                {/* Hero Header */}
+                <div className="relative bg-slate-900 px-8 py-12 overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/20 to-purple-600/20 blur-3xl opacity-50" />
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full -mr-32 -mt-32 blur-3xl" />
 
-                {/* Content */}
-                <div className="p-6 space-y-6">
-                    {/* Status and Progress */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                        <div>
-                            <label className="text-sm font-medium text-gray-600 mb-2 block">Status</label>
-                            <span className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-medium ${project.status === 'completed' ? 'bg-blue-100 text-blue-800' :
-                                project.status === 'in_progress' ? 'bg-emerald-100 text-emerald-800' :
-                                    'bg-amber-100 text-amber-800'
+                    <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
+                        <div className="space-y-4">
+                            <div className="inline-flex items-center gap-2 text-indigo-400 font-bold text-xs uppercase tracking-widest">
+                                <Layout className="h-4 w-4" />
+                                Portfolio Project
+                            </div>
+                            <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight leading-tight">
+                                {project.project_name}
+                            </h1>
+                            {project.domain_name && (
+                                <a
+                                    href={project.domain_name.startsWith('http') ? project.domain_name : `https://${project.domain_name}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-all bg-white/5 border border-white/10 px-4 py-2 rounded-xl text-sm group"
+                                >
+                                    <Globe className="h-4 w-4 group-hover:rotate-12 transition-transform" />
+                                    <span className="font-medium">{project.domain_name}</span>
+                                </a>
+                            )}
+                        </div>
+
+                        <div className="flex flex-col items-end gap-3">
+                            <span className={`px-6 py-2 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg ${project.status === 'completed' ? 'bg-emerald-500 text-white shadow-emerald-500/20' :
+                                    project.status === 'in_progress' ? 'bg-indigo-500 text-white shadow-indigo-500/20' :
+                                        'bg-amber-500 text-white shadow-amber-500/20'
                                 }`}>
-                                {project.status === 'in_progress' ? 'In Progress' :
-                                    project.status === 'completed' ? 'Completed' : 'Pending'}
+                                {project.status === 'in_progress' ? 'En Cours' :
+                                    project.status === 'completed' ? 'Terminé' : 'En Attente'}
                             </span>
+                            <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">Dernière mise à jour: {new Date(project.updated_at || project.created_at).toLocaleDateString('fr-FR')}</p>
                         </div>
+                    </div>
+                </div>
 
-                        <div>
-                            <label className="text-sm font-medium text-gray-600 mb-2 block">Progress</label>
-                            <div className="flex items-center gap-3">
-                                <div className="flex-1 bg-gray-200 rounded-full h-3">
-                                    <div
-                                        className={`h-3 rounded-full transition-all ${project.status === 'completed' ? 'bg-gradient-to-r from-blue-500 to-blue-600' :
-                                            project.status === 'in_progress' ? 'bg-gradient-to-r from-emerald-500 to-emerald-600' :
-                                                'bg-gradient-to-r from-amber-500 to-amber-600'
-                                            }`}
-                                        style={{ width: `${project.progress}%` }}
-                                    ></div>
-                                </div>
-                                <span className="text-sm font-semibold text-gray-700 min-w-[50px]">
-                                    {project.progress}%
-                                </span>
-                            </div>
+                {/* Metrics Tiles */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 border-b border-gray-100">
+                    {/* Progress */}
+                    <div className="p-8 space-y-4 border-r border-gray-50 hover:bg-gray-50/50 transition-colors">
+                        <div className="flex items-center justify-between">
+                            <BarChart3 className="h-5 w-5 text-indigo-500" />
+                            <span className="text-2xl font-black text-gray-900">{project.progress}%</span>
                         </div>
-
-                        {project.language && (
-                            <div>
-                                <label className="text-sm font-medium text-gray-600 mb-2 block">Language</label>
-                                <div className="flex items-center gap-2 text-gray-900">
-                                    <MessageSquare className="h-4 w-4 text-gray-400" />
-                                    <span className="text-sm">{project.language}</span>
-                                </div>
+                        <div className="space-y-2">
+                            <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden shadow-inner">
+                                <div
+                                    className={`h-full rounded-full transition-all duration-1000 ease-out ${project.status === 'completed' ? 'bg-emerald-500' : 'bg-indigo-500'
+                                        }`}
+                                    style={{ width: `${project.progress}%` }}
+                                />
                             </div>
-                        )}
-
-                        {project.project_size && (
-                            <div>
-                                <label className="text-sm font-medium text-gray-600 mb-2 block">Project Size</label>
-                                <div className="flex items-center gap-2 text-gray-900">
-                                    <TrendingUp className="h-4 w-4 text-gray-400" />
-                                    <span className="text-sm">{project.project_size}</span>
-                                </div>
-                            </div>
-                        )}
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Progression Globale</p>
+                        </div>
                     </div>
 
-                    {/* Assigned To */}
-                    <div>
-                        <label className="text-sm font-medium text-gray-600 mb-2 block">Assigned To</label>
-                        {projectOwner ? (
-                            <div className="flex items-center gap-3">
-                                <div className="flex-shrink-0 h-10 w-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
-                                    {projectOwner.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                                </div>
-                                <div>
-                                    <p className="text-sm font-medium text-gray-900">{projectOwner.full_name}</p>
-                                    <p className="text-xs text-gray-500">{projectOwner.role || 'Employee'}</p>
-                                </div>
-                            </div>
-                        ) : (
-                            <span className="text-sm text-gray-400 flex items-center gap-2">
-                                <User className="h-4 w-4" />
-                                Unassigned
-                            </span>
-                        )}
+                    {/* Assigned */}
+                    <div className="p-8 space-y-4 border-r border-gray-50 hover:bg-gray-50/50 transition-colors">
+                        <div className="flex items-center gap-3">
+                            {projectOwner ? (
+                                <>
+                                    <div className="h-10 w-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-200">
+                                        {projectOwner.full_name.split(' ').map((n: string) => n[0]).join('').toUpperCase()}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-bold text-gray-900 truncate">{projectOwner.full_name}</p>
+                                        <p className="text-[10px] text-indigo-500 font-bold uppercase tracking-tight">{projectOwner.role || 'Expert'}</p>
+                                    </div>
+                                </>
+                            ) : (
+                                <span className="text-sm text-gray-400 font-bold italic">Non Assigné</span>
+                            )}
+                        </div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Responsable du Projet</p>
                     </div>
 
-                    {/* Dates */}
-                    {(project.start_date || project.end_date) && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {project.start_date && (
-                                <div>
-                                    <label className="text-sm font-medium text-gray-600 mb-2 block flex items-center gap-2">
-                                        <Calendar className="h-4 w-4" />
-                                        Start Date
-                                    </label>
-                                    <p className="text-sm text-gray-900">
-                                        {new Date(project.start_date).toLocaleDateString('en-US', {
-                                            year: 'numeric',
-                                            month: 'long',
-                                            day: 'numeric'
-                                        })}
-                                    </p>
-                                </div>
-                            )}
-
-                            {project.end_date && (
-                                <div>
-                                    <label className="text-sm font-medium text-gray-600 mb-2 block flex items-center gap-2">
-                                        <Calendar className="h-4 w-4" />
-                                        End Date
-                                    </label>
-                                    <p className="text-sm text-gray-900">
-                                        {new Date(project.end_date).toLocaleDateString('en-US', {
-                                            year: 'numeric',
-                                            month: 'long',
-                                            day: 'numeric'
-                                        })}
-                                    </p>
-                                </div>
-                            )}
+                    {/* Info 1 */}
+                    <div className="p-8 space-y-4 border-r border-gray-50 hover:bg-gray-50/50 transition-colors">
+                        <div className="flex items-center gap-3 text-gray-900 font-bold">
+                            <MessageSquare className="h-5 w-5 text-purple-500" />
+                            <span className="text-sm">{project.language || 'Standard'}</span>
                         </div>
-                    )}
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Langage Principal</p>
+                    </div>
 
-                    {/* Comment */}
-                    {project.comment && (
-                        <div>
-                            <label className="text-sm font-medium text-gray-600 mb-2 block">Description</label>
-                            <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-4">
-                                {project.comment}
-                            </p>
+                    {/* Info 2 */}
+                    <div className="p-8 hover:bg-gray-50/50 transition-colors">
+                        <div className="flex items-center gap-3 text-gray-900 font-bold">
+                            <TrendingUp className="h-5 w-5 text-amber-500" />
+                            <span className="text-sm">{project.project_size || 'Moyen'}</span>
                         </div>
-                    )}
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Taille du Projet</p>
+                    </div>
+                </div>
+
+                {/* Main Content Info */}
+                <div className="p-10 grid grid-cols-1 lg:grid-cols-3 gap-12">
+                    {/* Description Area */}
+                    <div className="lg:col-span-2 space-y-8">
+                        <div className="space-y-4">
+                            <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest flex items-center gap-2">
+                                <TrendingUp className="h-4 w-4 text-indigo-500" />
+                                Description & Objectifs
+                            </h3>
+                            <div className="bg-gray-50/50 rounded-2xl p-6 border border-gray-100">
+                                <p className="text-gray-700 leading-relaxed font-medium">
+                                    {project.comment || "Aucune description détaillée n'a été fournie pour ce projet."}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Timeline Sidebar */}
+                    <div className="space-y-8">
+                        <div className="bg-indigo-50/30 rounded-3xl p-8 border border-indigo-100 flex flex-col gap-6">
+                            <h3 className="text-sm font-black text-indigo-900 uppercase tracking-widest">Timeline</h3>
+
+                            <div className="space-y-6">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-2.5 bg-white rounded-xl shadow-sm">
+                                        <Clock className="h-5 w-5 text-indigo-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Démarrage</p>
+                                        <p className="text-sm font-bold text-indigo-900">
+                                            {project.start_date ? new Date(project.start_date).toLocaleDateString('fr-FR', {
+                                                year: 'numeric', month: 'long', day: 'numeric'
+                                            }) : 'Non spécifié'}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-4">
+                                    <div className="p-2.5 bg-white rounded-xl shadow-sm">
+                                        <CheckCircle2 className="h-5 w-5 text-purple-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Échéance</p>
+                                        <p className="text-sm font-bold text-indigo-900">
+                                            {project.end_date ? new Date(project.end_date).toLocaleDateString('fr-FR', {
+                                                year: 'numeric', month: 'long', day: 'numeric'
+                                            }) : 'Non spécifiée'}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <Link
+                                href={`/projects/${project.id}/edit`}
+                                className="mt-4 w-full text-center py-3 bg-white text-indigo-600 rounded-xl text-xs font-black uppercase tracking-widest border border-indigo-200 hover:bg-indigo-600 hover:text-white transition-all shadow-sm"
+                            >
+                                Modifier le Projet
+                            </Link>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            {/* Notes Section */}
-            <NotesSection
-                projectId={project.id}
-                projectOwnerId={project.employee_id}
-                currentUserId={session.id}
-                notes={notes}
-                notesValidatedAt={project.notes_validated_at}
-            />
+            {/* Notes Section Container */}
+            <div className="relative">
+                <NotesSection
+                    projectId={project.id}
+                    projectOwnerId={project.employee_id}
+                    currentUserId={session.id}
+                    notes={notes}
+                    notesValidatedAt={project.notes_validated_at}
+                />
+            </div>
         </div>
     )
 }

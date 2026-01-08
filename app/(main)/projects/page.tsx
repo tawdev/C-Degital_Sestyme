@@ -4,6 +4,7 @@ import { Trash2, Edit, Plus, Globe, User, Activity, Clock, CheckCircle2, Eye } f
 import { deleteProject } from './actions'
 import { getSession } from '@/app/auth/actions'
 import { redirect } from 'next/navigation'
+import EmployeeAvatar from '@/components/employee-avatar'
 
 interface Project {
     id: string
@@ -14,7 +15,7 @@ interface Project {
     status: string
     progress: number
     employee_id: string | null
-    employees: { full_name: string } | { full_name: string }[] | null
+    employees: { full_name: string, avatar_url: string | null } | { full_name: string, avatar_url: string | null }[] | null
 }
 
 export default async function ProjectsPage({
@@ -59,7 +60,7 @@ export default async function ProjectsPage({
     // All users see all projects
     let query = supabase
         .from('projects')
-        .select('*, employees(full_name)')
+        .select('*, employees(full_name, avatar_url)')
 
     // إذا كان هناك فلتر من searchParams (من صفحة البروفايل)
     // If there's a filter from searchParams (from profile page)
@@ -200,8 +201,8 @@ export default async function ProjectsPage({
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             {project.project_size ? (
                                                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${project.project_size.toLowerCase().includes('large') ? 'bg-purple-100 text-purple-800' :
-                                                        project.project_size.toLowerCase().includes('medium') ? 'bg-indigo-100 text-indigo-800' :
-                                                            'bg-gray-100 text-gray-800'
+                                                    project.project_size.toLowerCase().includes('medium') ? 'bg-indigo-100 text-indigo-800' :
+                                                        'bg-gray-100 text-gray-800'
                                                     }`}>
                                                     {project.project_size}
                                                 </span>
@@ -210,17 +211,21 @@ export default async function ProjectsPage({
                                             )}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            {assignee ? (
-                                                <div className="flex items-center gap-2">
-                                                    <div className="flex-shrink-0 h-8 w-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xs font-semibold">
-                                                        {assignee.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                                                    </div>
-                                                    <span className="text-sm text-gray-900">{assignee}</span>
+                                            {project.employees ? (
+                                                <div className="flex items-center gap-3">
+                                                    <EmployeeAvatar
+                                                        avatarUrl={Array.isArray(project.employees) ? project.employees[0]?.avatar_url : project.employees?.avatar_url}
+                                                        fullName={Array.isArray(project.employees) ? project.employees[0]?.full_name : project.employees?.full_name}
+                                                        className="h-8 w-8 text-[10px]"
+                                                    />
+                                                    <span className="text-sm font-semibold text-gray-900">
+                                                        {Array.isArray(project.employees) ? project.employees[0]?.full_name : project.employees?.full_name}
+                                                    </span>
                                                 </div>
                                             ) : (
-                                                <span className="text-sm text-gray-400 flex items-center gap-1">
+                                                <span className="text-sm text-gray-400 flex items-center gap-2">
                                                     <User className="h-4 w-4" />
-                                                    Unassigned
+                                                    Non Assigné
                                                 </span>
                                             )}
                                         </td>
@@ -267,7 +272,7 @@ export default async function ProjectsPage({
                                                     title="View Details"
                                                 >
                                                     <Eye className="h-4 w-4" />
-                                                    View
+
                                                 </Link>
 
                                                 {/* Edit/Delete buttons - Admin can do everything, Employee only for own projects */}
@@ -279,7 +284,7 @@ export default async function ProjectsPage({
                                                             title="Edit Project"
                                                         >
                                                             <Edit className="h-4 w-4" />
-                                                            Edit
+
                                                         </Link>
                                                         <form action={deleteProject}>
                                                             <input type="hidden" name="id" value={project.id} />
@@ -289,7 +294,7 @@ export default async function ProjectsPage({
                                                                 title="Delete Project"
                                                             >
                                                                 <Trash2 className="h-4 w-4" />
-                                                                Delete
+
                                                             </button>
                                                         </form>
                                                     </>
