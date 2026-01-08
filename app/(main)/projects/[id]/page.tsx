@@ -84,12 +84,12 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
                 {/* Content */}
                 <div className="p-6 space-y-6">
                     {/* Status and Progress */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                         <div>
                             <label className="text-sm font-medium text-gray-600 mb-2 block">Status</label>
                             <span className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-medium ${project.status === 'completed' ? 'bg-blue-100 text-blue-800' :
-                                    project.status === 'in_progress' ? 'bg-emerald-100 text-emerald-800' :
-                                        'bg-amber-100 text-amber-800'
+                                project.status === 'in_progress' ? 'bg-emerald-100 text-emerald-800' :
+                                    'bg-amber-100 text-amber-800'
                                 }`}>
                                 {project.status === 'in_progress' ? 'In Progress' :
                                     project.status === 'completed' ? 'Completed' : 'Pending'}
@@ -102,8 +102,8 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
                                 <div className="flex-1 bg-gray-200 rounded-full h-3">
                                     <div
                                         className={`h-3 rounded-full transition-all ${project.status === 'completed' ? 'bg-gradient-to-r from-blue-500 to-blue-600' :
-                                                project.status === 'in_progress' ? 'bg-gradient-to-r from-emerald-500 to-emerald-600' :
-                                                    'bg-gradient-to-r from-amber-500 to-amber-600'
+                                            project.status === 'in_progress' ? 'bg-gradient-to-r from-emerald-500 to-emerald-600' :
+                                                'bg-gradient-to-r from-amber-500 to-amber-600'
                                             }`}
                                         style={{ width: `${project.progress}%` }}
                                     ></div>
@@ -113,6 +113,26 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
                                 </span>
                             </div>
                         </div>
+
+                        {project.language && (
+                            <div>
+                                <label className="text-sm font-medium text-gray-600 mb-2 block">Language</label>
+                                <div className="flex items-center gap-2 text-gray-900">
+                                    <MessageSquare className="h-4 w-4 text-gray-400" />
+                                    <span className="text-sm">{project.language}</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {project.project_size && (
+                            <div>
+                                <label className="text-sm font-medium text-gray-600 mb-2 block">Project Size</label>
+                                <div className="flex items-center gap-2 text-gray-900">
+                                    <TrendingUp className="h-4 w-4 text-gray-400" />
+                                    <span className="text-sm">{project.project_size}</span>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Assigned To */}

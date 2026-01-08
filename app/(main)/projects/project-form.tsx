@@ -40,12 +40,26 @@ export default function ProjectForm({ employees, project }: { employees: any[], 
                         </div>
                     </div>
 
-                    {/* Show select only if editing (project exists) */}
-                    {project ? (
-                        <div className="sm:col-span-4">
+                    <div className="sm:col-span-3">
+                        <label htmlFor="language" className="block text-sm font-medium leading-6 text-gray-900">Language</label>
+                        <div className="mt-2">
+                            <input type="text" name="language" id="language" defaultValue={project?.language} placeholder="e.g. Arabic, French" className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
+                        </div>
+                    </div>
+
+                    <div className="sm:col-span-3">
+                        <label htmlFor="project_size" className="block text-sm font-medium leading-6 text-gray-900">Project Size</label>
+                        <div className="mt-2">
+                            <input type="text" name="project_size" id="project_size" defaultValue={project?.project_size} placeholder="e.g. Small, Medium, Large" className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
+                        </div>
+                    </div>
+
+                    {/* Show assignment and status only if editing or if multiple employees available */}
+                    {(project || employees.length > 1) && (
+                        <div className="sm:col-span-3">
                             <label htmlFor="employee_id" className="block text-sm font-medium leading-6 text-gray-900">Assigned To</label>
                             <div className="mt-2">
-                                <select id="employee_id" name="employee_id" defaultValue={project.employee_id || ''} className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:max-w-xs sm:text-sm sm:leading-6">
+                                <select id="employee_id" name="employee_id" defaultValue={project?.employee_id || ''} className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6">
                                     <option value="">Unassigned</option>
                                     {employees.map(emp => (
                                         <option key={emp.id} value={emp.id}>{emp.full_name}</option>
@@ -53,31 +67,46 @@ export default function ProjectForm({ employees, project }: { employees: any[], 
                                 </select>
                             </div>
                         </div>
-                    ) : (
-                        // Auto-assign current user (first in employees list) when creating
-                        employees.length > 0 && <input type="hidden" name="employee_id" value={employees[0].id} />
+                    )}
+
+                    {!project && employees.length === 1 && (
+                        <input type="hidden" name="employee_id" value={employees[0].id} />
                     )}
 
                     {project && (
-                        <>
-                            <div className="sm:col-span-3">
-                                <label htmlFor="status" className="block text-sm font-medium leading-6 text-gray-900">Status</label>
-                                <div className="mt-2">
-                                    <select id="status" name="status" defaultValue={project?.status} className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:max-w-xs sm:text-sm sm:leading-6">
-                                        <option value="pending">Pending</option>
-                                        <option value="in_progress">In Progress</option>
-                                        <option value="completed">Completed</option>
-                                    </select>
-                                </div>
+                        <div className="sm:col-span-3">
+                            <label htmlFor="status" className="block text-sm font-medium leading-6 text-gray-900">Status</label>
+                            <div className="mt-2">
+                                <select id="status" name="status" defaultValue={project?.status} className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6">
+                                    <option value="pending">Pending</option>
+                                    <option value="in_progress">In Progress</option>
+                                    <option value="completed">Completed</option>
+                                </select>
                             </div>
+                        </div>
+                    )}
 
-                            <div className="sm:col-span-3">
-                                <label htmlFor="progress" className="block text-sm font-medium leading-6 text-gray-900">Progress (0-100)</label>
-                                <div className="mt-2">
-                                    <input type="number" name="progress" id="progress" min="0" max="100" defaultValue={project?.progress} className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
-                                </div>
+                    <div className="sm:col-span-3">
+                        <label htmlFor="start_date" className="block text-sm font-medium leading-6 text-gray-900">Start Date</label>
+                        <div className="mt-2">
+                            <input type="date" name="start_date" id="start_date" defaultValue={project?.start_date?.split('T')[0]} className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
+                        </div>
+                    </div>
+
+                    <div className="sm:col-span-3">
+                        <label htmlFor="end_date" className="block text-sm font-medium leading-6 text-gray-900">End Date</label>
+                        <div className="mt-2">
+                            <input type="date" name="end_date" id="end_date" defaultValue={project?.end_date?.split('T')[0]} className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
+                        </div>
+                    </div>
+
+                    {project && (
+                        <div className="sm:col-span-3">
+                            <label htmlFor="progress" className="block text-sm font-medium leading-6 text-gray-900">Progress (0-100)</label>
+                            <div className="mt-2">
+                                <input type="number" name="progress" id="progress" min="0" max="100" defaultValue={project?.progress} className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
                             </div>
-                        </>
+                        </div>
                     )}
 
                     <div className="col-span-full">

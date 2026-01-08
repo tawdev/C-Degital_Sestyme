@@ -2,15 +2,38 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Eye, EyeOff, Save } from 'lucide-react'
+import { Eye, EyeOff, Save, Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { uploadAvatar } from '../employees/storage-actions'
+import { updateProfile } from './actions'
 
 export default function ProfileForm({ employee }: { employee: any }) {
     const router = useRouter()
     const [loading, setLoading] = useState(false)
+    const [uploading, setUploading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState(false)
     const [showPassword, setShowPassword] = useState(false)
+    const [avatarUrl, setAvatarUrl] = useState(employee.avatar_url || '')
+
+    async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0]
+        if (!file) return
+
+        setUploading(true)
+        setError(null)
+
+        const formData = new FormData()
+        formData.append('file', file)
+
+        const res = await uploadAvatar(formData)
+        if (res.error) {
+            setError(res.error)
+        } else if (res.publicUrl) {
+            setAvatarUrl(res.publicUrl)
+        }
+        setUploading(false)
+    }
 
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault()
@@ -19,27 +42,13 @@ export default function ProfileForm({ employee }: { employee: any }) {
         setSuccess(false)
 
         const formData = new FormData(e.currentTarget)
-        const password = formData.get('password') as string
+        formData.append('id', employee.id)
+        formData.append('avatar_url', avatarUrl)
 
-        const data: any = {
-            full_name: formData.get('full_name') as string,
-            email: formData.get('email') as string,
-            phone: formData.get('phone') as string,
-        }
+        const result = await updateProfile(formData)
 
-        // Only update password if provided
-        if (password && password.trim() !== '') {
-            data.password = password
-        }
-
-        const supabase = createClient()
-        const { error: updateError } = await supabase
-            .from('employees')
-            .update(data)
-            .eq('id', employee.id)
-
-        if (updateError) {
-            setError(updateError.message)
+        if (result.error) {
+            setError(result.error)
             setLoading(false)
             return
         }
@@ -110,6 +119,53 @@ export default function ProfileForm({ employee }: { employee: any }) {
                         disabled
                         className="block w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-500 bg-gray-50 cursor-not-allowed"
                     />
+                </div>
+
+                <div>
+                    <label htmlFor="date_of_birth" className="block text-sm font-medium text-gray-700 mb-2">
+                        Date of Birth
+                    </label>
+                    <input
+                        type="date"
+                        name="date_of_birth"
+                        id="date_of_birth"
+                        defaultValue={employee.date_of_birth ? new Date(employee.date_of_birth).toISOString().split('T')[0] : ''}
+                        className="block w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    />
+                </div>
+
+                <div>
+                    <label htmlFor="avatar_url" className="block text-sm font-medium text-gray-700 mb-2">
+                        Avatar URL
+                    </label>
+                    <div className="flex gap-2">
+                        <input
+                            type="text"
+                            name="avatar_url"
+                            id="avatar_url"
+                            value={avatarUrl}
+                            onChange={(e) => setAvatarUrl(e.target.value)}
+                            placeholder="https://example.com/photo.jpg"
+                            className="block w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:border-transparent flex-1"
+                        />
+                        <div className="relative">
+                            <input
+                                type="file"
+                                accept="image/*"
+                                onChange={handleUpload}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                disabled={uploading}
+                            />
+                            <button
+                                type="button"
+                                disabled={uploading}
+                                className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg border border-gray-300 hover:bg-gray-200 transition-colors text-sm font-medium h-full"
+                            >
+                                <Upload className="h-4 w-4" />
+                                {uploading ? '...' : 'Upload'}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 

@@ -11,13 +11,27 @@ export default async function NewProjectPage() {
     }
 
     const supabase = createClient()
-    const { data: employee } = await supabase
+
+    // Get current user role
+    const { data: currentUser } = await supabase
         .from('employees')
-        .select('id, full_name')
+        .select('id, role')
         .eq('id', session.id)
         .single()
 
-    const employees = employee ? [employee] : []
+    // Fetch employees for assignment
+    let employees = []
+    if (currentUser?.role === 'Administrator') {
+        const { data } = await supabase.from('employees').select('id, full_name').order('full_name')
+        employees = data || []
+    } else {
+        const { data: employee } = await supabase
+            .from('employees')
+            .select('id, full_name')
+            .eq('id', session.id)
+            .single()
+        employees = employee ? [employee] : []
+    }
 
     return (
         <div className="max-w-2xl mx-auto">

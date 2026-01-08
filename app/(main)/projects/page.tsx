@@ -9,9 +9,11 @@ interface Project {
     id: string
     project_name: string
     domain_name: string | null
+    language: string | null
+    project_size: string | null
     status: string
     progress: number
-    employee_id: string | null  // إضافة employee_id للتحقق من الملكية
+    employee_id: string | null
     employees: { full_name: string } | { full_name: string }[] | null
 }
 
@@ -81,17 +83,14 @@ export default async function ProjectsPage({
                     <h1 className="text-3xl font-bold text-gray-900">Projects</h1>
                     <p className="mt-2 text-gray-600">Manage website projects and track their progress</p>
                 </div>
-                {/* ADMIN لا يمكنه إضافة مشاريع (قراءة فقط) */}
-                {/* Admins cannot create projects (read-only) */}
-                {!isAdmin && (
-                    <Link
-                        href="/projects/new"
-                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg font-medium"
-                    >
-                        <Plus className="h-5 w-5" />
-                        New Project
-                    </Link>
-                )}
+                {/* Allow both Employees and Admins to create projects */}
+                <Link
+                    href="/projects/new"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg font-medium"
+                >
+                    <Plus className="h-5 w-5" />
+                    New Project
+                </Link>
             </div>
 
             {/* Stats */}
@@ -152,6 +151,12 @@ export default async function ProjectsPage({
                                     Project
                                 </th>
                                 <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                                    Language
+                                </th>
+                                <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                                    Size
+                                </th>
+                                <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                                     Assigned To
                                 </th>
                                 <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
@@ -181,16 +186,28 @@ export default async function ProjectsPage({
                                                         href={project.domain_name.startsWith('http') ? project.domain_name : `https://${project.domain_name}`}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
-                                                        className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center gap-1 mt-1 group"
+                                                        className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1 mt-1 group"
                                                     >
                                                         <Globe className="h-3 w-3" />
                                                         <span className="group-hover:underline">{project.domain_name}</span>
-                                                        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                                        </svg>
                                                     </a>
                                                 )}
                                             </div>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <span className="text-sm text-gray-600 font-medium">{project.language || '-'}</span>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            {project.project_size ? (
+                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${project.project_size.toLowerCase().includes('large') ? 'bg-purple-100 text-purple-800' :
+                                                        project.project_size.toLowerCase().includes('medium') ? 'bg-indigo-100 text-indigo-800' :
+                                                            'bg-gray-100 text-gray-800'
+                                                    }`}>
+                                                    {project.project_size}
+                                                </span>
+                                            ) : (
+                                                <span className="text-sm text-gray-400">-</span>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             {assignee ? (
@@ -253,12 +270,11 @@ export default async function ProjectsPage({
                                                     View
                                                 </Link>
 
-                                                {/* أزرار Edit/Delete - EMPLOYEE فقط لمشاريعه */}
-                                                {/* Edit/Delete buttons - EMPLOYEE only for own projects */}
-                                                {!isAdmin && project.employee_id === currentUserId && (
+                                                {/* Edit/Delete buttons - Admin can do everything, Employee only for own projects */}
+                                                {(isAdmin || project.employee_id === currentUserId) && (
                                                     <>
                                                         <Link
-                                                            href={`/projects/${project.id}`}
+                                                            href={`/projects/${project.id}/edit`}
                                                             className="inline-flex items-center gap-1 px-3 py-1.5 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 rounded-lg transition-colors"
                                                             title="Edit Project"
                                                         >

@@ -3,6 +3,7 @@ import { getSession } from '@/app/auth/actions'
 import { redirect } from 'next/navigation'
 import ProfileTabs from './profile-tabs'
 import { Mail, Phone, Briefcase, Calendar } from 'lucide-react'
+import EmployeeAvatar from '@/components/employee-avatar'
 
 export default async function ProfilePage() {
     const session = await getSession()
@@ -39,9 +40,11 @@ export default async function ProfilePage() {
             {/* Header */}
             <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl shadow-lg p-8 text-white">
                 <div className="flex items-center gap-6">
-                    <div className="flex-shrink-0 h-24 w-24 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-4xl font-bold border-4 border-white/30">
-                        {employee.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                    </div>
+                    <EmployeeAvatar
+                        avatarUrl={employee.avatar_url}
+                        fullName={employee.full_name}
+                        className="h-24 w-24 text-2xl border-4 border-white/30"
+                    />
                     <div>
                         <h1 className="text-3xl font-bold">{employee.full_name}</h1>
                         <p className="text-indigo-100 mt-1 flex items-center gap-2">

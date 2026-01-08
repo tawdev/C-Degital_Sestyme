@@ -4,6 +4,7 @@ import { Trash2, Edit, UserPlus, Mail, Phone, Briefcase } from 'lucide-react'
 import { deleteEmployee } from './actions'
 import { getSession } from '@/app/auth/actions'
 import { redirect } from 'next/navigation'
+import EmployeeAvatar from '@/components/employee-avatar'
 
 interface Employee {
     id: string
@@ -11,6 +12,8 @@ interface Employee {
     role: string | null
     email: string
     phone: string | null
+    avatar_url: string | null
+    date_of_birth: string | null
     created_at: string
 }
 
@@ -39,7 +42,7 @@ export default async function EmployeesPage() {
     // Fetch employees data
     const { data } = await supabase
         .from('employees')
-        .select('id, full_name, role, email, phone, created_at')
+        .select('id, full_name, role, email, phone, avatar_url, date_of_birth, created_at')
         .order('created_at', { ascending: false })
 
     const employees = (data as unknown as Employee[]) || []
@@ -123,8 +126,11 @@ export default async function EmployeesPage() {
                                 <tr key={employee.id} className="hover:bg-gray-50 transition-colors">
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="flex items-center">
-                                            <div className="flex-shrink-0 h-10 w-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
-                                                {employee.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                            <div className="flex-shrink-0 h-10 w-10">
+                                                <EmployeeAvatar
+                                                    avatarUrl={employee.avatar_url}
+                                                    fullName={employee.full_name}
+                                                />
                                             </div>
                                             <div className="ml-4">
                                                 <div className="text-sm font-medium text-gray-900">{employee.full_name}</div>

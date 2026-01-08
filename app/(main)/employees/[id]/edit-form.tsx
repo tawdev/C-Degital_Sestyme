@@ -3,12 +3,34 @@
 import { updateEmployee } from '../actions'
 import { useState } from 'react'
 import Link from 'next/link'
-import { Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, Upload } from 'lucide-react'
+import { uploadAvatar } from '../storage-actions'
 
 export default function EditEmployeeForm({ employee }: { employee: any }) {
     const [loading, setLoading] = useState(false)
+    const [uploading, setUploading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [showPassword, setShowPassword] = useState(false)
+    const [avatarUrl, setAvatarUrl] = useState(employee.avatar_url || '')
+
+    async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0]
+        if (!file) return
+
+        setUploading(true)
+        setError(null)
+
+        const formData = new FormData()
+        formData.append('file', file)
+
+        const res = await uploadAvatar(formData)
+        if (res.error) {
+            setError(res.error)
+        } else if (res.publicUrl) {
+            setAvatarUrl(res.publicUrl)
+        }
+        setUploading(false)
+    }
 
     async function handleSubmit(formData: FormData) {
         setLoading(true)
@@ -87,6 +109,45 @@ export default function EditEmployeeForm({ employee }: { employee: any }) {
                         <label htmlFor="phone" className="block text-sm font-medium leading-6 text-gray-900">Phone</label>
                         <div className="mt-2">
                             <input type="tel" name="phone" id="phone" defaultValue={employee.phone} className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
+                        </div>
+                    </div>
+
+                    <div className="sm:col-span-4">
+                        <label htmlFor="avatar_url" className="block text-sm font-medium leading-6 text-gray-900">Avatar URL</label>
+                        <div className="mt-2 flex gap-2">
+                            <input
+                                type="text"
+                                name="avatar_url"
+                                id="avatar_url"
+                                value={avatarUrl}
+                                onChange={(e) => setAvatarUrl(e.target.value)}
+                                placeholder="https://example.com/photo.jpg"
+                                className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                            />
+                            <div className="relative">
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleUpload}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                    disabled={uploading}
+                                />
+                                <button
+                                    type="button"
+                                    disabled={uploading}
+                                    className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md border border-gray-300 hover:bg-gray-200 transition-colors text-sm font-medium h-full"
+                                >
+                                    <Upload className="h-4 w-4" />
+                                    {uploading ? '...' : 'Upload'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="sm:col-span-4">
+                        <label htmlFor="date_of_birth" className="block text-sm font-medium leading-6 text-gray-900">Date of Birth</label>
+                        <div className="mt-2">
+                            <input type="date" name="date_of_birth" id="date_of_birth" defaultValue={employee.date_of_birth ? new Date(employee.date_of_birth).toISOString().split('T')[0] : ''} className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
                         </div>
                     </div>
 
