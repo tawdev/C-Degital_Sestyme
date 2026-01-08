@@ -89,17 +89,19 @@ export async function updateEmployee(formData: FormData) {
                 const existingAuthUser = listData?.users.find(u => u.email?.toLowerCase() === email.toLowerCase())
 
                 if (existingAuthUser) {
-                    console.log('Found user in Auth by email, syncing IDs...')
-                    // Sync the database ID to match the existing Auth ID using admin client
-                    const { error: idUpdateError } = await adminClient.from('employees')
-                        .update({ id: existingAuthUser.id })
-                        .eq('id', id)
+                    console.log(`Syncing existing Auth user (${existingAuthUser.id}) for email ${email}`)
 
-                    if (idUpdateError) {
-                        return { error: 'Found existing Auth account but failed to sync IDs.' }
+                    if (existingAuthUser.id !== id) {
+                        const { error: idUpdateError } = await adminClient.from('employees')
+                            .update({ id: existingAuthUser.id })
+                            .eq('id', id)
+
+                        if (idUpdateError) {
+                            console.error('ID Sync Error:', idUpdateError)
+                            return { error: `Found existing Auth account but failed to sync Database ID. Please run the sync migration. Error: ${idUpdateError.message}` }
+                        }
+                        id = existingAuthUser.id
                     }
-
-                    id = existingAuthUser.id
 
                     // Now update the password for the correct ID
                     const { error: secondAuthError } = await adminClient.auth.admin.updateUserById(id, {
@@ -129,7 +131,9 @@ export async function updateEmployee(formData: FormData) {
                             .eq('id', id)
 
                         if (idUpdateError) {
-                            return { error: 'Account created in Auth, but could not sync Database ID.' }
+                            // Try to cleanup if possible, but the ID update is the blocker
+                            console.error('ID Sync Error (New User):', idUpdateError)
+                            return { error: `Account created in Auth, but could not sync Database ID. Error: ${idUpdateError.message}` }
                         }
                         id = authData.user.id
                     }

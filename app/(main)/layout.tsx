@@ -1,8 +1,10 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { logout, getSession } from '../auth/actions'
-import { LayoutDashboard, Users, Briefcase, LogOut, User } from 'lucide-react'
+import { LayoutDashboard, Users, Briefcase, LogOut, User, MessageSquare } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
+import { getUnreadCount } from './messages/actions'
+import UnreadBadge from '@/components/chat/unread-badge'
 
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
     const session = await getSession()
@@ -13,13 +15,16 @@ export default async function MainLayout({ children }: { children: React.ReactNo
 
     const displayName = session.full_name?.split(' ')[0] || session.email?.split('@')[0] || 'User'
 
-    // Fetch user role
+    // Fetch user role and unread count
     const supabase = createClient()
-    const { data: employee } = await supabase
-        .from('employees')
-        .select('role')
-        .eq('id', session.id)
-        .single()
+    const [{ data: employee }, unreadCount] = await Promise.all([
+        supabase
+            .from('employees')
+            .select('role')
+            .eq('id', session.id)
+            .single(),
+        getUnreadCount()
+    ])
 
     const isAdmin = employee?.role === 'Administrator'
 
@@ -54,6 +59,13 @@ export default async function MainLayout({ children }: { children: React.ReactNo
                                 )}
                                 <NavLink href="/projects" icon={Briefcase}>
                                     Projects
+                                </NavLink>
+                                <NavLink
+                                    href="/messages"
+                                    icon={MessageSquare}
+                                    badge={<UnreadBadge initialCount={unreadCount} userId={session.id} />}
+                                >
+                                    Messages
                                 </NavLink>
                                 <NavLink href="/profile" icon={User}>
                                     Profile
@@ -104,6 +116,13 @@ export default async function MainLayout({ children }: { children: React.ReactNo
                         <MobileNavLink href="/projects" icon={Briefcase}>
                             Projects
                         </MobileNavLink>
+                        <MobileNavLink
+                            href="/messages"
+                            icon={MessageSquare}
+                            badge={<UnreadBadge initialCount={unreadCount} userId={session.id} />}
+                        >
+                            Messages
+                        </MobileNavLink>
                         <MobileNavLink href="/profile" icon={User}>
                             Profile
                         </MobileNavLink>
@@ -129,26 +148,38 @@ export default async function MainLayout({ children }: { children: React.ReactNo
 }
 
 // Desktop Navigation Link Component
-function NavLink({ href, icon: Icon, children }: { href: string, icon: any, children: React.ReactNode }) {
+function NavLink({ href, icon: Icon, children, badge }: { href: string, icon: any, children: React.ReactNode, badge?: React.ReactNode }) {
     return (
         <Link
             href={href}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors group"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors group relative"
         >
             <Icon className="h-4 w-4 text-gray-400 group-hover:text-indigo-600" />
             {children}
+            {badge && (
+                <div className="absolute -top-1 -right-1">
+                    {badge}
+                </div>
+            )}
         </Link>
     )
 }
 
 // Mobile Navigation Link Component
-function MobileNavLink({ href, icon: Icon, children }: { href: string, icon: any, children: React.ReactNode }) {
+function MobileNavLink({ href, icon: Icon, children, badge }: { href: string, icon: any, children: React.ReactNode, badge?: React.ReactNode }) {
     return (
         <Link
             href={href}
-            className="flex-1 flex flex-col items-center gap-1 px-3 py-2 text-xs font-medium text-gray-600 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors"
+            className="flex-1 flex flex-col items-center gap-1 px-3 py-2 text-xs font-medium text-gray-600 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors relative"
         >
-            <Icon className="h-5 w-5" />
+            <div className="relative">
+                <Icon className="h-5 w-5" />
+                {badge && (
+                    <div className="absolute -top-2 -right-2">
+                        {badge}
+                    </div>
+                )}
+            </div>
             {children}
         </Link>
     )
