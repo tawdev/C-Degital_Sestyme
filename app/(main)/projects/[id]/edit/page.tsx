@@ -17,7 +17,7 @@ export default async function EditProjectPage({ params }: { params: { id: string
     // Fetch the project
     const { data: project } = await supabase
         .from('projects')
-        .select('*')
+        .select('*, project_tasks(*)')
         .eq('id', params.id)
         .single()
 

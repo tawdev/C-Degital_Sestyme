@@ -5,23 +5,20 @@ import { useUnreadCount } from '@/hooks/use-unread-count'
 interface UnreadBadgeProps {
     initialCount: number
     userId: string
+    conversationId?: string
 }
 
 /**
- * PURE REALTIME UNREAD BADGE
- * Utilizes the useUnreadCount hook for non-refreshing, state-driven updates.
- * Features ultra-smooth animations and consistent state sync.
+ * Isolated unread badge that manages its own real-time state.
+ * Minimizes re-renders of the parent list.
  */
-export default function UnreadBadge({ initialCount, userId }: UnreadBadgeProps) {
-    const { count } = useUnreadCount(initialCount, userId)
+export default function UnreadBadge({ initialCount, userId, conversationId }: UnreadBadgeProps) {
+    const { count } = useUnreadCount(initialCount, userId, conversationId)
 
-    if (count <= 0) return null
+    if (count === 0) return null
 
     return (
-        <span
-            className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-red-600 text-[10px] font-bold text-white shadow-sm ring-2 ring-white md:ring-0 animate-in fade-in zoom-in duration-300"
-            aria-label={`${count} unread messages`}
-        >
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold text-white shadow-sm animate-in zoom-in duration-300">
             {count > 99 ? '99+' : count}
         </span>
     )

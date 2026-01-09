@@ -26,13 +26,13 @@ export async function getConversations() {
     if (!session?.id) return []
     const userId = session.id
 
-    // Fetch conversations where user is either user1 or user2 using admin client
-    const { data, error } = await adminClient
+    // 1. Fetch conversations
+    const { data: convs, error } = await adminClient
         .from('conversations')
         .select(`
             *,
-            user1:employees!conversations_user1_id_fkey(full_name, avatar_url),
-            user2:employees!conversations_user2_id_fkey(full_name, avatar_url)
+            user1:employees!conversations_user1_id_fkey(full_name, avatar_url, role),
+            user2:employees!conversations_user2_id_fkey(full_name, avatar_url, role)
         `)
         .or(`user1_id.eq.${userId},user2_id.eq.${userId}`)
         .order('created_at', { ascending: false })
@@ -42,11 +42,26 @@ export async function getConversations() {
         return []
     }
 
-    // Map to include "other participant" info easily
-    return data.map(conv => ({
+    // 2. Fetch unread counts for these conversations
+    const { data: unreadMessages } = await adminClient
+        .from('messages')
+        .select('conversation_id')
+        .eq('recipient_id', userId)
+        .eq('is_read', false)
+        // Add a dummy query param or order to discourage any potential middleware caching
+        .order('id', { ascending: true })
+
+    const unreadMap: Record<string, number> = {}
+    unreadMessages?.forEach(msg => {
+        unreadMap[msg.conversation_id] = (unreadMap[msg.conversation_id] || 0) + 1
+    })
+
+    // Map to include "other participant" info easily and attach unread count
+    return convs.map(conv => ({
         ...conv,
         employee: conv.user1_id === userId ? conv.user2 : conv.user1,
-        employee_id: conv.user1_id === userId ? conv.user2_id : conv.user1_id
+        employee_id: conv.user1_id === userId ? conv.user2_id : conv.user1_id,
+        unread_count: unreadMap[conv.id] || 0
     })) as ChatConversation[]
 }
 

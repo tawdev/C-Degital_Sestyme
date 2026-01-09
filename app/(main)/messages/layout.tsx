@@ -43,8 +43,7 @@ export default async function MessagesLayout({
                     conversations={conversations}
                     contacts={contacts}
                     isAdmin={isAdmin}
-                // activeId will be handled by searchParams or params in the actual page if needed, 
-                // or we can just let sidebar detect it via URL
+                    currentUserId={session.id}
                 />
             </div>
 

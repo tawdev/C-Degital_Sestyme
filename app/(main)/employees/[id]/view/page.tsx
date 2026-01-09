@@ -147,11 +147,15 @@ export default async function EmployeeViewPage({ params }: { params: { id: strin
                         {projects && projects.length > 0 ? (
                             <div className="space-y-4">
                                 {projects.map((project) => (
-                                    <div key={project.id} className="p-4 rounded-xl border border-gray-100 hover:border-indigo-100 hover:bg-indigo-50/30 transition-all group">
+                                    <Link
+                                        key={project.id}
+                                        href={`/projects/${project.id}`}
+                                        className="block p-4 rounded-xl border border-gray-100 hover:border-indigo-100 hover:bg-indigo-50/30 transition-all group"
+                                    >
                                         <div className="flex items-start justify-between">
                                             <div>
                                                 <h3 className="font-bold text-gray-900 group-hover:text-indigo-700 transition-colors">
-                                                    {project.name}
+                                                    {project.project_name || project.name}
                                                 </h3>
                                                 <p className="text-sm text-gray-500 mt-1 line-clamp-2">
                                                     {project.description}
@@ -170,7 +174,7 @@ export default async function EmployeeViewPage({ params }: { params: { id: strin
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
+                                    </Link>
                                 ))}
                             </div>
                         ) : (
@@ -180,65 +184,69 @@ export default async function EmployeeViewPage({ params }: { params: { id: strin
                             </div>
                         )}
                     </div>
-
-                    {/* Expertise & Specialization */}
-                    <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
-                        <div className="flex items-center gap-3 mb-6">
-                            <Award className="h-6 w-6 text-indigo-600" />
-                            <h2 className="text-xl font-bold text-gray-900">Expertise & Spécialisation</h2>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2 mb-8">
-                            {specializations.length > 0 ? specializations.map(spec => (
-                                <span key={spec} className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-bold border border-indigo-100 shadow-sm">
-                                    {spec}
-                                </span>
-                            )) : (
-                                <p className="text-sm text-gray-400 italic">Aucune spécialisation listée</p>
-                            )}
-                        </div>
-
-                        <div className="flex items-center gap-3 mb-6 pt-6 border-t border-gray-100">
-                            <Code2 className="h-6 w-6 text-purple-600" />
-                            <h2 className="text-xl font-bold text-gray-900">Compétences Techniques</h2>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                            {skills.length > 0 ? skills.map(skill => (
-                                <span key={skill} className="px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg text-sm font-medium border border-purple-100 shadow-sm">
-                                    {skill}
-                                </span>
-                            )) : (
-                                <p className="text-sm text-gray-400 italic">Aucune compétence listée</p>
-                            )}
-                        </div>
-                    </div>
                 </div>
 
                 <div className="space-y-6">
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Statut Employé</h3>
-                        <div className="flex items-center gap-3 p-3 bg-emerald-50 rounded-xl border border-emerald-100">
-                            <div className="h-2.5 w-2.5 bg-emerald-500 rounded-full animate-pulse" />
-                            <span className="text-sm font-bold text-emerald-800 tracking-tight">Membre Actif du Staff</span>
-                        </div>
-                    </div>
-
+                    {/* Actions Card (Moved here for better UX) */}
                     <div className="bg-slate-900 p-6 rounded-2xl shadow-lg text-white">
-                        <h3 className="text-xs font-bold uppercase tracking-widest mb-2 opacity-60">Actions de Direction</h3>
-                        <div className="space-y-3 mt-4">
+                        <h3 className="text-xs font-bold uppercase tracking-widest mb-4 opacity-60">Actions de Direction</h3>
+                        <div className="space-y-3">
                             <Link
-                                href={`/messages/new?employee_id=${employee.id}`}
-                                className="block w-full text-center py-3 bg-indigo-600 hover:bg-indigo-700 rounded-xl text-sm font-bold transition-all shadow-indigo-900/20 shadow-lg"
+                                href={`/chat?employee_id=${employee.id}`}
+                                className="flex items-center justify-center gap-2 w-full py-3 bg-indigo-600 hover:bg-indigo-700 rounded-xl text-sm font-bold transition-all shadow-indigo-900/20 shadow-lg"
                             >
+                                <Mail className="h-4 w-4" />
                                 Ouvrir un Chat Direct
                             </Link>
                             <Link
                                 href={`/employees/${employee.id}`}
-                                className="block w-full text-center py-3 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-bold transition-all border border-white/5"
+                                className="flex items-center justify-center gap-2 w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-bold transition-all border border-white/5"
                             >
+                                <Briefcase className="h-4 w-4" />
                                 Modifier l'Employé
                             </Link>
+                        </div>
+                    </div>
+
+                    {/* Expertise & Specialization (Moved to Sidebar) */}
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Award className="h-5 w-5 text-indigo-600" />
+                            <h2 className="text-lg font-bold text-gray-900">Expertise</h2>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 mb-6">
+                            {specializations.length > 0 ? specializations.map((spec: string) => (
+                                <span key={spec} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold border border-indigo-100">
+                                    {spec}
+                                </span>
+                            )) : (
+                                <p className="text-xs text-gray-400 italic">Aucune spécialisation</p>
+                            )}
+                        </div>
+
+                        <div className="flex items-center gap-2 mb-4 pt-4 border-t border-gray-100">
+                            <Code2 className="h-5 w-5 text-purple-600" />
+                            <h2 className="text-lg font-bold text-gray-900">Compétences</h2>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                            {skills.length > 0 ? skills.map((skill: string) => (
+                                <span key={skill} className="px-2.5 py-1 bg-purple-50 text-purple-700 rounded-lg text-xs font-medium border border-purple-100">
+                                    {skill}
+                                </span>
+                            )) : (
+                                <p className="text-xs text-gray-400 italic">Aucune compétence</p>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Status Card */}
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Statut</h3>
+                        <div className="flex items-center gap-3 p-3 bg-emerald-50 rounded-xl border border-emerald-100">
+                            <div className="h-2 w-2 bg-emerald-500 rounded-full animate-pulse" />
+                            <span className="text-xs font-bold text-emerald-800">Membre Actif du Staff</span>
                         </div>
                     </div>
                 </div>

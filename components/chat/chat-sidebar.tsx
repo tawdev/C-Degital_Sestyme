@@ -3,18 +3,19 @@
 import Link from 'next/link'
 import EmployeeAvatar from '@/components/employee-avatar'
 import { ChatConversation } from '@/lib/types/chat'
-import { useSearchParams, useRouter, useParams } from 'next/navigation'
+import { useSearchParams, useParams } from 'next/navigation'
+import UnreadBadge from './unread-badge'
 
 interface ChatSidebarProps {
     conversations: ChatConversation[]
     contacts?: any[]
-    activeId?: string // Kept for backward compatibility if passed, but will prefer useParams
+    activeId?: string
     isAdmin: boolean
+    currentUserId: string
 }
 
-export default function ChatSidebar({ conversations, contacts, activeId: propActiveId, isAdmin }: ChatSidebarProps) {
+export default function ChatSidebar({ conversations, contacts, activeId: propActiveId, isAdmin, currentUserId }: ChatSidebarProps) {
     const searchParams = useSearchParams()
-    const router = useRouter()
     const params = useParams()
     const activeId = params?.id as string || propActiveId
 
@@ -36,10 +37,13 @@ export default function ChatSidebar({ conversations, contacts, activeId: propAct
                 const employee = isContact ? item : item.employee
                 const targetId = item.id
 
-                // Find existing conversation ID for this employee
-                const conversationId = isContact
-                    ? conversations.find(c => c.employee_id === targetId)?.id
-                    : item.id
+                // Find existing conversation for this employee to get its ID and unread count
+                const existingConversation = isContact
+                    ? conversations.find(c => c.employee_id === targetId)
+                    : item as ChatConversation
+
+                const conversationId = existingConversation?.id
+                const unreadCount = existingConversation?.unread_count || 0
 
                 const isActive = activeId === conversationId || (searchParams.get('employee_id') === targetId)
                 const href = conversationId
@@ -59,10 +63,19 @@ export default function ChatSidebar({ conversations, contacts, activeId: propAct
                                     avatarUrl={employee?.avatar_url || null}
                                     fullName={employee?.full_name || employee?.fullName || 'User'}
                                 />
+                                {conversationId && !isActive && (
+                                    <div className="absolute -top-1 -right-1 z-10">
+                                        <UnreadBadge
+                                            initialCount={unreadCount}
+                                            userId={currentUserId}
+                                            conversationId={conversationId}
+                                        />
+                                    </div>
+                                )}
                             </div>
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between">
-                                    <p className="text-sm font-semibold text-gray-900 truncate">
+                                    <p className={`text-sm tracking-tight truncate ${unreadCount > 0 ? 'font-bold text-gray-900' : 'font-medium text-gray-700'}`}>
                                         {employee?.full_name || employee?.fullName || 'Unknown Employee'}
                                     </p>
                                     {!isContact && (
