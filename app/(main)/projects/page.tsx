@@ -62,7 +62,7 @@ export default async function ProjectsPage({
     const adminClient = createAdminClient()
     let query = adminClient
         .from('projects')
-        .select('*')
+        .select('*, employees!projects_employee_id_fkey(full_name, avatar_url)')
 
     // إذا كان هناك فلتر من searchParams (من صفحة البروفايل)
     // If there's a filter from searchParams (from profile page)

@@ -74,7 +74,7 @@ export default function ProjectForm({ employees, project, currentUserId }: { emp
                                     defaultValue={project?.project_name}
                                     required
                                     placeholder="Ex: Refonte Site Web E-commerce"
-                                    className="block w-full rounded-xl border-gray-200 py-3 pl-10 pr-4 text-gray-900 shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-medium placeholder:text-gray-300"
+                                    className="block w-full rounded-xl border-gray-200 py-3 pl-10 pr-4 text-black shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-medium placeholder:text-gray-400"
                                 />
                             </div>
                         </div>
@@ -92,7 +92,7 @@ export default function ProjectForm({ employees, project, currentUserId }: { emp
                                         id="domain_name"
                                         defaultValue={project?.domain_name}
                                         placeholder="Ex: www.monclient.com"
-                                        className="block w-full rounded-xl border-gray-200 py-3 pl-10 pr-4 text-gray-900 shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-medium placeholder:text-gray-300"
+                                        className="block w-full rounded-xl border-gray-200 py-3 pl-10 pr-4 text-black shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-medium placeholder:text-gray-400"
                                     />
                                 </div>
                             </div>
@@ -109,7 +109,7 @@ export default function ProjectForm({ employees, project, currentUserId }: { emp
                                         id="language"
                                         defaultValue={project?.language}
                                         placeholder="Ex: Next.js, PHP, React..."
-                                        className="block w-full rounded-xl border-gray-200 py-3 pl-10 pr-4 text-gray-900 shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-medium placeholder:text-gray-300"
+                                        className="block w-full rounded-xl border-gray-200 py-3 pl-10 pr-4 text-black shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-medium placeholder:text-gray-400"
                                     />
                                 </div>
                             </div>
@@ -127,7 +127,7 @@ export default function ProjectForm({ employees, project, currentUserId }: { emp
                                     id="project_size"
                                     defaultValue={project?.project_size}
                                     placeholder="Ex: Small, Medium, Large, Enterprise"
-                                    className="block w-full rounded-xl border-gray-200 py-3 pl-10 pr-4 text-gray-900 shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-medium placeholder:text-gray-300"
+                                    className="block w-full rounded-xl border-gray-200 py-3 pl-10 pr-4 text-black shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-medium placeholder:text-gray-400"
                                 />
                             </div>
                         </div>
@@ -185,7 +185,7 @@ export default function ProjectForm({ employees, project, currentUserId }: { emp
                                                 }
                                                 e.target.value = ''
                                             }}
-                                            className="block w-full rounded-xl border-gray-200 py-3 pl-10 pr-10 text-gray-900 shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-bold appearance-none bg-gray-50/50"
+                                            className="block w-full rounded-xl border-gray-200 py-3 pl-10 pr-10 text-black shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-bold appearance-none bg-gray-50/50"
                                         >
                                             <option value="">Ajouter un collaborateur...</option>
                                             {employees.filter(e => e.id !== (project?.employee_id || currentUserId || '') && !collaborators.includes(e.id) && e.role !== 'Administrator').map(emp => (
@@ -217,7 +217,7 @@ export default function ProjectForm({ employees, project, currentUserId }: { emp
                                         }
                                         defaultValue={tasks.length === 0 ? project?.status : undefined}
                                         disabled={tasks.length > 0}
-                                        className={`block w-full rounded-xl border-gray-200 py-3 pl-4 pr-10 text-gray-900 shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-bold appearance-none ${tasks.length > 0 ? 'bg-gray-50 cursor-not-allowed' : 'bg-gray-50/50'}`}
+                                        className={`block w-full rounded-xl border-gray-200 py-3 pl-4 pr-10 text-black shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-bold appearance-none ${tasks.length > 0 ? 'bg-gray-50 cursor-not-allowed' : 'bg-gray-50/50'}`}
                                     >
                                         <option value="pending">En Attente</option>
                                         <option value="in_progress">En Cours</option>
@@ -252,7 +252,7 @@ export default function ProjectForm({ employees, project, currentUserId }: { emp
                                         value={tasks.length > 0 ? calculatedProgress : undefined}
                                         defaultValue={tasks.length === 0 ? project?.progress : undefined}
                                         readOnly={tasks.length > 0}
-                                        className={`block w-full rounded-xl border-gray-200 py-3 pl-10 pr-4 text-gray-900 shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-medium ${tasks.length > 0 ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+                                        className={`block w-full rounded-xl border-gray-200 py-3 pl-10 pr-4 text-black shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-medium ${tasks.length > 0 ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                                     />
                                 </div>
                             </div>
@@ -343,7 +343,7 @@ export default function ProjectForm({ employees, project, currentUserId }: { emp
                                                 value={task.title}
                                                 onChange={(e) => updateTask(index, 'title', e.target.value)}
                                                 placeholder="Titre de la tâche..."
-                                                className="block w-full border-none p-0 text-sm font-bold text-gray-900 focus:ring-0 placeholder:text-gray-300 bg-transparent"
+                                                className="block w-full border-none p-0 text-sm font-bold text-black focus:ring-0 placeholder:text-gray-400 bg-transparent"
                                             />
                                             {/* Assignment Dropdown if collaborators exist */}
                                             {(collaborators.length > 0 || project?.employee_id) && (
@@ -405,7 +405,7 @@ export default function ProjectForm({ employees, project, currentUserId }: { emp
                                 rows={4}
                                 defaultValue={project?.comment}
                                 placeholder="Détaillez les objectifs principaux ou les notes critiques pour ce projet..."
-                                className="block w-full rounded-xl border-gray-200 py-3 pl-10 pr-4 text-gray-900 shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-medium placeholder:text-gray-300 resize-none"
+                                className="block w-full rounded-xl border-gray-200 py-3 pl-10 pr-4 text-black shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-medium placeholder:text-gray-400 resize-none"
                             ></textarea>
                         </div>
                     </div>

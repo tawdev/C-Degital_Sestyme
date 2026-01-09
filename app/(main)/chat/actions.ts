@@ -67,8 +67,54 @@ export async function getMessages(conversationId: string) {
     return data as ChatMessage[]
 }
 
-export async function sendMessage(conversationId: string, content: string, senderId: string, senderRole: 'admin' | 'employee') {
+export async function sendMessage(formData: FormData) {
     const adminClient = createAdminClient()
+    const supabase = createClient() // Need standard client for Storage (optional, admin works too but standard is better for policies)
+
+    const conversationId = formData.get('conversationId') as string
+    const content = formData.get('content') as string
+    const senderId = formData.get('senderId') as string
+    const senderRole = formData.get('senderRole') as string // 'admin' | 'employee' - kept for tracking
+    const type = (formData.get('type') as string) || 'text'
+    const duration = formData.get('duration') ? parseInt(formData.get('duration') as string) : null
+
+    // File handling
+    const file = formData.get('file') as File | null
+    let fileUrl = content
+    let fileSize = null
+    let fileName = null
+
+    if (file && file.size > 0 && type !== 'text') {
+        fileName = file.name
+        fileSize = file.size
+        const fileExt = fileName.split('.').pop()
+        const uniqueId = Math.random().toString(36).substring(2)
+        const path = `${conversationId}/${Date.now()}-${uniqueId}.${fileExt}`
+
+        // Upload to Storage
+        // Use adminClient for storage to ensure no permission issues during beta, 
+        // OR use standard client if policies are set correctly. Using admin for reliability now.
+        const { error: uploadError } = await adminClient
+            .storage
+            .from('messages-attachments')
+            .upload(path, file, {
+                contentType: file.type,
+                upsert: false
+            })
+
+        if (uploadError) {
+            console.error('Error uploading file:', uploadError)
+            return { error: 'Failed to upload attachment' }
+        }
+
+        // Get Public URL
+        const { data: { publicUrl } } = adminClient
+            .storage
+            .from('messages-attachments')
+            .getPublicUrl(path)
+
+        fileUrl = publicUrl
+    }
 
     // 1. Resolve recipient from conversation
     const { data: conv } = await adminClient
@@ -81,16 +127,20 @@ export async function sendMessage(conversationId: string, content: string, sende
 
     const recipientId = conv.user1_id === senderId ? conv.user2_id : conv.user1_id
 
-    // 2. Insert message with recipient_id for high-performance RLS
+    // 2. Insert message with multimedia fields
     const { data, error } = await adminClient
         .from('messages')
         .insert({
             conversation_id: conversationId,
-            content,
+            content: fileUrl, // Contains text OR file URL
             sender_id: senderId,
             sender_role: senderRole,
             recipient_id: recipientId,
-            is_read: false
+            is_read: false,
+            type: type,
+            file_name: fileName,
+            file_size: fileSize,
+            duration: duration
         })
         .select()
         .single()

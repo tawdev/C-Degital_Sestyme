@@ -47,7 +47,7 @@ export default function NotesSection({
                         <MessageSquare className="h-6 w-6" />
                     </div>
                     <div>
-                        <h2 className="text-xl font-black text-gray-900 tracking-tight">
+                        <h2 className="text-xl font-black text-black tracking-tight">
                             Journal de Bord ({notes.length})
                         </h2>
                         {notesValidatedAt ? (
@@ -91,7 +91,7 @@ export default function NotesSection({
                                 rows={3}
                                 placeholder="Décrivez votre intervention ou remarque technique..."
                                 required
-                                className="w-full rounded-xl border border-indigo-100 bg-white px-5 py-4 text-gray-900 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all resize-none font-medium placeholder:text-gray-300"
+                                className="w-full rounded-xl border border-indigo-100 bg-white px-5 py-4 text-black focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all resize-none font-medium placeholder:text-gray-400"
                             />
                             <div className="flex justify-end gap-3">
                                 <button
@@ -137,7 +137,7 @@ export default function NotesSection({
                                         {/* Note Header */}
                                         <div className="flex items-center justify-between mb-4">
                                             <div className="flex flex-col">
-                                                <h4 className="text-sm font-black text-gray-900 tracking-tight">
+                                                <h4 className="text-sm font-black text-black tracking-tight">
                                                     {note.author?.full_name || 'Expert Anonyme'}
                                                 </h4>
                                                 <div className="flex items-center gap-2 text-[10px] text-gray-400 font-bold uppercase tracking-tight">
@@ -202,7 +202,7 @@ export default function NotesSection({
                                                     onChange={(e) => setEditContent(e.target.value)}
                                                     rows={3}
                                                     required
-                                                    className="w-full rounded-2xl border border-indigo-100 bg-white px-5 py-4 text-gray-900 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all resize-none font-medium"
+                                                    className="w-full rounded-2xl border border-indigo-100 bg-white px-5 py-4 text-black focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all resize-none font-medium"
                                                 />
                                                 <div className="flex justify-end gap-2">
                                                     <button
@@ -240,7 +240,7 @@ export default function NotesSection({
                         <div className="bg-white h-20 w-20 rounded-full shadow-lg flex items-center justify-center mx-auto mb-6">
                             <MessageSquare className="h-10 w-10 text-gray-200" />
                         </div>
-                        <h3 className="text-lg font-black text-gray-900 tracking-tight">Aucune Note pour le Moment</h3>
+                        <h3 className="text-lg font-black text-black tracking-tight">Aucune Note pour le Moment</h3>
                         <p className="text-sm text-gray-400 mt-2 font-medium">Capturez les moments clés du projet ici.</p>
                     </div>
                 )}

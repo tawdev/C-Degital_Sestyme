@@ -1,9 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getSession } from '@/app/auth/actions'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Calendar, Globe, User, TrendingUp, CheckCircle2, MessageSquare, Clock, BarChart3, Layout, ListChecks, Circle } from 'lucide-react'
 import NotesSection from './notes-section'
+import TaskList from '@/components/projects/task-list'
 
 export default async function ProjectDetailPage({ params }: { params: { id: string } }) {
     const session = await getSession()
@@ -13,23 +15,32 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
     }
 
     const supabase = createClient()
+    const adminClient = createAdminClient()
 
     // Fetch project and notes data
-    const [projectRes, notesRes] = await Promise.all([
-        supabase
+    // Use adminClient for fetching project data to ensure visibility (bypass RLS)
+    // Fetch tasks using standard supabase client to enforce RLS (only collaborators see tasks)
+    const [projectRes, notesRes, tasksRes] = await Promise.all([
+        adminClient
             .from('projects')
-            .select('*, employees(id, full_name, role), project_tasks(*)')
+            .select('*, employees!projects_employee_id_fkey(id, full_name, role)')
             .eq('id', params.id)
             .single(),
         supabase
             .from('project_notes')
             .select('*, author:employees(full_name, role)')
             .eq('project_id', params.id)
-            .order('created_at', { ascending: false })
+            .order('created_at', { ascending: false }),
+        supabase
+            .from('project_tasks')
+            .select('*, assignee:employees!assignee_id(full_name)')
+            .eq('project_id', params.id)
+            .order('created_at', { ascending: true })
     ])
 
     const project = projectRes.data
     const notes = notesRes.data || []
+    const tasks = tasksRes.data || []
 
     if (!project) {
         notFound()
@@ -183,31 +194,11 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
                                 <ListChecks className="h-4 w-4 text-indigo-500" />
                                 Progression des Tâches
                             </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {project.project_tasks && project.project_tasks.length > 0 ? (
-                                    project.project_tasks.map((task: any) => (
-                                        <div key={task.id} className="flex items-center gap-3 p-4 bg-gray-50/50 rounded-2xl border border-gray-100 group transition-all hover:bg-white hover:shadow-md">
-                                            {task.status === 'completed' ? (
-                                                <div className="bg-emerald-100 text-emerald-600 p-1.5 rounded-lg shadow-sm">
-                                                    <CheckCircle2 className="h-4 w-4" />
-                                                </div>
-                                            ) : (
-                                                <div className="bg-amber-100 text-amber-600 p-1.5 rounded-lg shadow-sm">
-                                                    <Circle className="h-4 w-4" />
-                                                </div>
-                                            )}
-                                            <div className="flex-1">
-                                                <p className={`text-sm font-bold ${task.status === 'completed' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{task.title}</p>
-                                                <p className="text-[10px] font-black uppercase tracking-tight text-gray-400">{task.status === 'completed' ? 'Terminé' : 'En Attente'}</p>
-                                            </div>
-                                        </div>
-                                    ))
-                                ) : (
-                                    <div className="col-span-full py-8 text-center bg-gray-50/30 rounded-2xl border-2 border-dashed border-gray-100">
-                                        <p className="text-sm font-medium text-gray-400 italic">Aucune tâche spécifique n'a été définie pour ce projet.</p>
-                                    </div>
-                                )}
-                            </div>
+                            <TaskList
+                                tasks={tasks}
+                                projectId={project.id}
+                                currentUserId={session.id}
+                            />
                         </div>
                     </div>
 
