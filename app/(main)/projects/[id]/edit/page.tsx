@@ -17,7 +17,7 @@ export default async function EditProjectPage({ params }: { params: { id: string
     // Fetch the project
     const { data: project } = await supabase
         .from('projects')
-        .select('*, project_tasks(*)')
+        .select('*, project_tasks(*), project_collaborators(*)')
         .eq('id', params.id)
         .single()
 
@@ -38,15 +38,9 @@ export default async function EditProjectPage({ params }: { params: { id: string
         redirect('/projects')
     }
 
-    // Fetch employees for the "Assigned To" select
-    let employees = []
-    if (currentUser?.role === 'Administrator') {
-        const { data } = await supabase.from('employees').select('id, full_name')
-        employees = data || []
-    } else {
-        const { data } = await supabase.from('employees').select('id, full_name').eq('id', session.id)
-        employees = data || []
-    }
+    // Fetch employees for assignment (Everyone can assign collaborators)
+    const { data } = await supabase.from('employees').select('id, full_name, role').order('full_name')
+    const employees = data || []
 
     return (
         <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -69,7 +63,7 @@ export default async function EditProjectPage({ params }: { params: { id: string
                 </div>
             </div>
 
-            <ProjectForm employees={employees} project={project} />
+            <ProjectForm employees={employees} project={project} currentUserId={session.id} />
         </div>
     )
 }

@@ -21,19 +21,9 @@ export default async function NewProjectPage() {
         .eq('id', session.id)
         .single()
 
-    // Fetch employees for assignment
-    let employees = []
-    if (currentUser?.role === 'Administrator') {
-        const { data } = await supabase.from('employees').select('id, full_name').order('full_name')
-        employees = data || []
-    } else {
-        const { data: employee } = await supabase
-            .from('employees')
-            .select('id, full_name')
-            .eq('id', session.id)
-            .single()
-        employees = employee ? [employee] : []
-    }
+    // Fetch employees for assignment (Everyone can assign collaborators)
+    const { data } = await supabase.from('employees').select('id, full_name, role').order('full_name')
+    const employees = data || []
 
     return (
         <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -56,7 +46,7 @@ export default async function NewProjectPage() {
                 </div>
             </div>
 
-            <ProjectForm employees={employees} />
+            <ProjectForm employees={employees} currentUserId={session.id} />
         </div>
     )
 }

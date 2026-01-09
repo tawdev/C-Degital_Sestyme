@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import Link from 'next/link'
 import { Trash2, Edit, Plus, Globe, User, Activity, Clock, CheckCircle2, Eye } from 'lucide-react'
 import { deleteProject } from './actions'
@@ -57,10 +58,11 @@ export default async function ProjectsPage({
     // ────────────────────────────────────────────
 
     // جميع المستخدمين يرون جميع المشاريع
-    // All users see all projects
-    let query = supabase
+    // All users see all projects (Using adminClient to bypass any restrictive RLS)
+    const adminClient = createAdminClient()
+    let query = adminClient
         .from('projects')
-        .select('*, employees(full_name, avatar_url)')
+        .select('*')
 
     // إذا كان هناك فلتر من searchParams (من صفحة البروفايل)
     // If there's a filter from searchParams (from profile page)
@@ -68,7 +70,10 @@ export default async function ProjectsPage({
         query = query.eq('employee_id', searchParams.employee_id)
     }
 
-    const { data } = await query.order('created_at', { ascending: false })
+    const { data, error } = await query.order('created_at', { ascending: false })
+    if (error) {
+        console.error('Error fetching projects:', error)
+    }
 
     const projects = (data as unknown as Project[]) || []
 

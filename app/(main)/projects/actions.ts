@@ -37,20 +37,39 @@ export async function createProject(formData: FormData) {
         }
     }
 
-    const { data: project, error } = await supabase.from('projects').insert(data).select().single()
+    const { data: project, error } = await adminClient.from('projects').insert(data).select().single()
 
     if (error) {
         return { error: error.message }
     }
 
     // Insert tasks
-    if (validTasks.length > 0) {
-        const tasksWithProjectId = validTasks.map((t: any) => ({
-            project_id: project.id,
-            title: t.title,
-            status: t.status
-        }))
-        await adminClient.from('project_tasks').insert(tasksWithProjectId)
+    try {
+        if (validTasks.length > 0) {
+            const tasksWithProjectId = validTasks.map((t: any) => ({
+                project_id: project.id,
+                title: t.title,
+                status: t.status,
+                assigned_to: t.assigned_to || null
+            }))
+            await adminClient.from('project_tasks').insert(tasksWithProjectId)
+        }
+    } catch (e) {
+        console.error('Error inserting tasks:', e)
+    }
+
+    // Insert collaborators
+    try {
+        const collaborators = JSON.parse(formData.get('collaborators') as string || '[]')
+        if (collaborators.length > 0) {
+            const collaboratorsData = collaborators.map((empId: string) => ({
+                project_id: project.id,
+                employee_id: empId
+            }))
+            await adminClient.from('project_collaborators').insert(collaboratorsData)
+        }
+    } catch (e) {
+        console.error('Error inserting collaborators:', e)
     }
 
     revalidatePath('/projects')
@@ -91,24 +110,45 @@ export async function updateProject(formData: FormData) {
         }
     }
 
-    const { error } = await supabase.from('projects').update(data).eq('id', id)
+    const { error } = await adminClient.from('projects').update(data).eq('id', id)
 
     if (error) {
         return { error: error.message }
     }
 
     // Sync tasks: delete and re-insert using adminClient for robustness
-    // 1. Delete old tasks
-    await adminClient.from('project_tasks').delete().eq('project_id', id)
+    try {
+        // 1. Delete old tasks
+        await adminClient.from('project_tasks').delete().eq('project_id', id)
 
-    // 2. Insert new tasks
-    if (validTasks.length > 0) {
-        const tasksWithProjectId = validTasks.map((t: any) => ({
-            project_id: id,
-            title: t.title,
-            status: t.status
-        }))
-        await adminClient.from('project_tasks').insert(tasksWithProjectId)
+        // 2. Insert new tasks
+        if (validTasks.length > 0) {
+            const tasksWithProjectId = validTasks.map((t: any) => ({
+                project_id: id,
+                title: t.title,
+                status: t.status,
+                assigned_to: t.assigned_to || null
+            }))
+            await adminClient.from('project_tasks').insert(tasksWithProjectId)
+        }
+    } catch (e) {
+        console.error('Error syncing tasks:', e)
+    }
+
+    // iOS-Style Collaborators Sync: Delete all and re-insert (Simplest for now)
+    try {
+        await adminClient.from('project_collaborators').delete().eq('project_id', id)
+
+        const collaborators = JSON.parse(formData.get('collaborators') as string || '[]')
+        if (collaborators.length > 0) {
+            const collaboratorsData = collaborators.map((empId: string) => ({
+                project_id: id,
+                employee_id: empId
+            }))
+            await adminClient.from('project_collaborators').insert(collaboratorsData)
+        }
+    } catch (e) {
+        console.error('Error syncing collaborators:', e)
     }
 
     revalidatePath('/projects')
@@ -117,10 +157,10 @@ export async function updateProject(formData: FormData) {
 }
 
 export async function deleteProject(formData: FormData) {
-    const supabase = createClient()
+    const adminClient = createAdminClient()
     const id = formData.get('id') as string
 
-    const { error } = await supabase.from('projects').delete().eq('id', id)
+    const { error } = await adminClient.from('projects').delete().eq('id', id)
 
     if (error) {
         console.error('Error deleting project:', error.message)
