@@ -16,6 +16,7 @@ interface ChatWindowProps {
         avatar_url: string | null
     }
     recipient?: {
+        id: string
         full_name: string
         avatar_url: string | null
     } | null
@@ -26,7 +27,7 @@ export default function ChatWindow({ conversationId, currentUser, recipient }: C
     const [content, setContent] = useState('')
     const [loading, setLoading] = useState(true)
     const [sending, setSending] = useState(false)
-    const [otherUser, setOtherUser] = useState<{ full_name: string; avatar_url: string | null } | null>(recipient || null)
+    const [otherUser, setOtherUser] = useState<{ id: string; full_name: string; avatar_url: string | null } | null>(recipient || null)
     const messagesEndRef = useRef<HTMLDivElement>(null)
 
     // Sync otherUser state with recipient prop
@@ -142,7 +143,9 @@ export default function ChatWindow({ conversationId, currentUser, recipient }: C
             sender_id: currentUser.id,
             sender_role: currentUser.role,
             content: messageContent,
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
+            is_read: true,
+            recipient_id: otherUser?.id || 'temp-recipient'
         }
 
         setMessages(prev => [...prev, optimisticMsg])

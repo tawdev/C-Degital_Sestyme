@@ -92,6 +92,7 @@ export default async function ChatPage({
                     contacts={contacts}
                     activeId={activeId}
                     isAdmin={isAdmin}
+                    currentUserId={session.id}
                 />
             </div>
 

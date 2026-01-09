@@ -17,7 +17,7 @@ export async function createProject(formData: FormData) {
         project_size: formData.get('project_size') as string,
         comment: formData.get('comment') as string,
         start_date: new Date().toISOString().split('T')[0],
-        end_date: null,
+        end_date: null as string | null,
         status: 'pending',
         progress: 0
     }
