@@ -161,7 +161,9 @@ export default function NotesSection({
                                                 ) : (
                                                     <div className="flex gap-1">
                                                         {isProjectOwner && (
-                                                            <form action={validateNote}>
+                                                            <form action={async (formData) => {
+                                                                await validateNote(formData);
+                                                            }}>
                                                                 <input type="hidden" name="note_id" value={note.id} />
                                                                 <input type="hidden" name="project_id" value={projectId} />
                                                                 <button
