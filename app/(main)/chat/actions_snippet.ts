@@ -1,3 +1,8 @@
+'use server'
+
+import { createClient } from '@/lib/supabase/server'
+import { getSession } from '@/app/auth/actions'
+import { revalidatePath } from 'next/cache'
 
 /**
  * Deletes a message securely using RLS.
@@ -6,7 +11,7 @@
  * - We use the standard `createClient()` (RLS-enabled) instead of `adminClient`.
  * - This ensures the RLS policy we created is actually enforced by the database.
  * - The policy checks: uid == sender_id AND role != Administrator.
- */
+ * */
 export async function deleteMessage(messageId: string) {
     const supabase = createClient()
     const session = await getSession()
