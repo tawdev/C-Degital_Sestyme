@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { MessageSquare, Plus, Edit2, Trash2, CheckCircle2, X, Send } from 'lucide-react'
-import { addNote, updateNote, deleteNote, validateNotes } from './actions'
+import { addNote, updateNote, deleteNote, validateNote } from './actions'
 
 interface Note {
     id: string
@@ -11,6 +11,7 @@ interface Note {
     content: string
     created_at: string
     updated_at: string
+    validated_at: string | null
     author?: {
         full_name: string
         role: string
@@ -22,7 +23,8 @@ interface NotesSectionProps {
     projectOwnerId: string | null
     currentUserId: string
     notes: Note[]
-    notesValidatedAt: string | null
+    notesValidatedAt: string | null // Keep for backward compat or remove if unused? Removing usage.
+    isAdmin?: boolean
 }
 
 export default function NotesSection({
@@ -30,13 +32,15 @@ export default function NotesSection({
     projectOwnerId,
     currentUserId,
     notes,
-    notesValidatedAt
+    notesValidatedAt,
+    isAdmin = false
 }: NotesSectionProps) {
     const [isAddingNote, setIsAddingNote] = useState(false)
     const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
     const [editContent, setEditContent] = useState('')
 
     const isProjectOwner = projectOwnerId === currentUserId
+    const canAddNote = !isAddingNote && (!isProjectOwner || isAdmin)
 
     return (
         <div className="bg-white rounded-3xl shadow-xl shadow-indigo-900/5 border border-gray-100 overflow-hidden pb-8">
@@ -50,18 +54,11 @@ export default function NotesSection({
                         <h2 className="text-xl font-black text-black tracking-tight">
                             Journal de Bord ({notes.length})
                         </h2>
-                        {notesValidatedAt ? (
-                            <span className="flex items-center gap-1.5 text-[10px] font-black text-emerald-600 uppercase tracking-widest mt-0.5">
-                                <CheckCircle2 className="h-3 w-3" />
-                                Projet Validé
-                            </span>
-                        ) : (
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Suivi des interventions techniques</p>
-                        )}
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Suivi des interventions techniques</p>
                     </div>
                 </div>
 
-                {!isAddingNote && !isProjectOwner && (
+                {canAddNote && (
                     <button
                         onClick={() => setIsAddingNote(true)}
                         className="group inline-flex items-center gap-2 px-6 py-2.5 bg-slate-900 text-white rounded-xl hover:bg-indigo-600 transition-all text-xs font-black uppercase tracking-widest shadow-lg shadow-gray-900/10 active:scale-95"
@@ -119,6 +116,7 @@ export default function NotesSection({
                         {notes.map((note) => {
                             const isAuthor = note.author_id === currentUserId
                             const isEditing = editingNoteId === note.id
+                            const isValidated = !!note.validated_at
 
                             return (
                                 <div
@@ -133,7 +131,10 @@ export default function NotesSection({
                                     </div>
 
                                     {/* Note Bubble/Card */}
-                                    <div className="flex-1 bg-gray-50/50 hover:bg-white rounded-3xl p-6 border border-gray-100 hover:border-indigo-100 hover:shadow-xl hover:shadow-indigo-900/[0.02] transition-all">
+                                    <div className={`flex-1 rounded-3xl p-6 border transition-all ${isValidated
+                                        ? 'bg-emerald-50/50 border-emerald-100/50'
+                                        : 'bg-gray-50/50 border-gray-100 hover:border-indigo-100 hover:shadow-xl hover:shadow-indigo-900/[0.02]'}`}>
+
                                         {/* Note Header */}
                                         <div className="flex items-center justify-between mb-4">
                                             <div className="flex flex-col">
@@ -150,38 +151,67 @@ export default function NotesSection({
                                                 </div>
                                             </div>
 
-                                            {isAuthor && !isEditing && (
-                                                <div className="flex gap-1">
-                                                    <button
-                                                        onClick={() => {
-                                                            setEditingNoteId(note.id)
-                                                            setEditContent(note.content)
-                                                        }}
-                                                        className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
-                                                        title="Modifier"
-                                                    >
-                                                        <Edit2 className="h-3.5 w-3.5" />
-                                                    </button>
-                                                    <form action={async (formData) => {
-                                                        await deleteNote(formData);
-                                                    }}>
-                                                        <input type="hidden" name="note_id" value={note.id} />
-                                                        <input type="hidden" name="project_id" value={projectId} />
-                                                        <button
-                                                            type="submit"
-                                                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                                                            title="Supprimer"
-                                                            onClick={(e) => {
-                                                                if (!confirm('Voulez-vous vraiment supprimer cette note ?')) {
-                                                                    e.preventDefault()
+                                            {/* Actions */}
+                                            <div className="flex items-center gap-2">
+                                                {isValidated ? (
+                                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-widest rounded-lg">
+                                                        <CheckCircle2 className="h-3 w-3" />
+                                                        Validé
+                                                    </span>
+                                                ) : (
+                                                    <div className="flex gap-1">
+                                                        {(isProjectOwner || isAdmin) && (
+                                                            <form action={async (formData) => {
+                                                                if (confirm('Clôturer le Journal ?\nLa validation verrouille le journal de bord et confirme l\'état actuel.')) {
+                                                                    await validateNote(formData)
                                                                 }
-                                                            }}
-                                                        >
-                                                            <Trash2 className="h-3.5 w-3.5" />
-                                                        </button>
-                                                    </form>
-                                                </div>
-                                            )}
+                                                            }}>
+                                                                <input type="hidden" name="note_id" value={note.id} />
+                                                                <input type="hidden" name="project_id" value={projectId} />
+                                                                <button
+                                                                    type="submit"
+                                                                    className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-indigo-700 transition-all mr-2"
+                                                                >
+                                                                    Valider
+                                                                </button>
+                                                            </form>
+                                                        )}
+
+                                                        {isAuthor && !isEditing && (
+                                                            <>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setEditingNoteId(note.id)
+                                                                        setEditContent(note.content)
+                                                                    }}
+                                                                    className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                                                                    title="Modifier"
+                                                                >
+                                                                    <Edit2 className="h-3.5 w-3.5" />
+                                                                </button>
+                                                                <form action={async (formData) => {
+                                                                    await deleteNote(formData);
+                                                                }}>
+                                                                    <input type="hidden" name="note_id" value={note.id} />
+                                                                    <input type="hidden" name="project_id" value={projectId} />
+                                                                    <button
+                                                                        type="submit"
+                                                                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                                                                        title="Supprimer"
+                                                                        onClick={(e) => {
+                                                                            if (!confirm('Voulez-vous vraiment supprimer cette note ?')) {
+                                                                                e.preventDefault()
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                                    </button>
+                                                                </form>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
 
                                         {/* Note Content */}
@@ -224,7 +254,9 @@ export default function NotesSection({
                                                 </div>
                                             </form>
                                         ) : (
-                                            <div className="bg-white/50 rounded-2xl p-5 border border-white/80 shadow-inner">
+                                            <div className={`rounded-2xl p-5 border shadow-inner ${isValidated
+                                                ? 'bg-emerald-100/30 border-emerald-100/50'
+                                                : 'bg-white/50 border-white/80'}`}>
                                                 <p className="text-sm text-gray-700 leading-relaxed font-medium whitespace-pre-wrap">
                                                     {note.content}
                                                 </p>
@@ -245,50 +277,6 @@ export default function NotesSection({
                     </div>
                 )}
             </div>
-
-            {/* Sticky Actions Bar - صاحب المشروع فقط */}
-            {isProjectOwner && notes.length > 0 && (
-                <div className="px-8 mt-12">
-                    <div className={`p-8 rounded-3xl border-2 transition-all ${notesValidatedAt
-                        ? 'bg-emerald-50 border-emerald-100'
-                        : 'bg-indigo-900 border-indigo-800 shadow-2xl shadow-indigo-900/40 translate-y-[-4px]'
-                        }`}>
-                        <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-                            <div className="flex items-center gap-4">
-                                <div className={`p-3 rounded-2xl ${notesValidatedAt ? 'bg-emerald-100 text-emerald-600' : 'bg-white/10 text-white'}`}>
-                                    <CheckCircle2 className="h-8 w-8" />
-                                </div>
-                                <div>
-                                    <h4 className={`text-lg font-black tracking-tight ${notesValidatedAt ? 'text-emerald-900' : 'text-white'}`}>
-                                        {notesValidatedAt ? 'Rapport Technique Validé' : 'Clôturer le Journal ?'}
-                                    </h4>
-                                    <p className={`text-xs font-medium ${notesValidatedAt ? 'text-emerald-600' : 'text-indigo-300'}`}>
-                                        {notesValidatedAt
-                                            ? `Validé le ${new Date(notesValidatedAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}`
-                                            : "La validation verrouille le journal de bord et confirme l'état actuel."}
-                                    </p>
-                                </div>
-                            </div>
-
-                            <form action={async (formData) => {
-                                await validateNotes(formData);
-                            }} className="w-full md:w-auto">
-                                <input type="hidden" name="project_id" value={projectId} />
-                                <button
-                                    type="submit"
-                                    disabled={!!notesValidatedAt}
-                                    className={`w-full md:w-auto px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all ${notesValidatedAt
-                                        ? 'bg-emerald-100 text-emerald-800 cursor-not-allowed opacity-50'
-                                        : 'bg-white text-indigo-900 hover:bg-indigo-50 shadow-xl active:scale-95'
-                                        }`}
-                                >
-                                    {notesValidatedAt ? 'Déjà Validé' : 'Valider Tout'}
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     )
 }

@@ -5,6 +5,8 @@ import { LayoutDashboard, Users, Briefcase, LogOut, User, MessageSquare } from '
 import { createClient } from '@/lib/supabase/server'
 import { getUnreadCount } from './messages/actions'
 import UnreadBadge from '@/components/chat/unread-badge'
+import { getUnvalidatedNotesCount, getOwnedProjectIds } from '@/components/journal/actions'
+import JournalBadge from '@/components/journal/journal-badge'
 
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
     const session = await getSession()
@@ -17,13 +19,15 @@ export default async function MainLayout({ children }: { children: React.ReactNo
 
     // Fetch user role and unread count
     const supabase = createClient()
-    const [{ data: employee }, unreadCount] = await Promise.all([
+    const [{ data: employee }, unreadCount, journalCount, ownedProjects] = await Promise.all([
         supabase
             .from('employees')
             .select('role')
             .eq('id', session.id)
             .single(),
-        getUnreadCount()
+        getUnreadCount(),
+        getUnvalidatedNotesCount(),
+        getOwnedProjectIds()
     ])
 
     const isAdmin = employee?.role === 'Administrator'
@@ -57,7 +61,10 @@ export default async function MainLayout({ children }: { children: React.ReactNo
                                         Employees
                                     </NavLink>
                                 )}
-                                <NavLink href="/projects" icon={Briefcase}>
+                                <NavLink
+                                    href="/projects"
+                                    icon={Briefcase}
+                                >
                                     Projects
                                 </NavLink>
                                 <NavLink
@@ -75,6 +82,9 @@ export default async function MainLayout({ children }: { children: React.ReactNo
 
                         {/* User Menu */}
                         <div className="flex items-center gap-4">
+                            {/* Journal Notification Bell */}
+                            <JournalBadge initialCount={journalCount} userId={session.id} ownedProjectIds={ownedProjects} />
+
                             {/* User Info */}
                             <div className="hidden sm:flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200">
                                 <div className="flex-shrink-0 h-8 w-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-semibold">

@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { getSession } from '@/app/auth/actions'
@@ -38,11 +39,16 @@ export async function addNote(formData: FormData) {
         .eq('id', projectId)
         .single()
 
-    if (project && project.employee_id === session.id) {
+    const { data: user } = await supabase.from('employees').select('role').eq('id', session.id).single()
+    const isAdmin = user?.role === 'Administrator'
+
+    if (project && project.employee_id === session.id && !isAdmin) {
         return { error: 'Unauthorized: You cannot add notes to your own project.' }
     }
 
-    const { error } = await supabase
+    const adminClient = createAdminClient()
+
+    const { error } = await adminClient
         .from('project_notes')
         .insert({
             project_id: projectId,
@@ -75,6 +81,12 @@ export async function updateNote(formData: FormData) {
 
     const supabase = createClient()
 
+    // check validation status first
+    const { data: note } = await supabase.from('project_notes').select('validated_at').eq('id', noteId).single()
+    if (note?.validated_at) {
+        return { error: 'Ce journal est validé et ne peut plus être modifié.' }
+    }
+
     const { error } = await supabase
         .from('project_notes')
         .update({ content: content.trim() })
@@ -100,6 +112,12 @@ export async function deleteNote(formData: FormData) {
 
     const supabase = createClient()
 
+    // check validation status first
+    const { data: note } = await supabase.from('project_notes').select('validated_at').eq('id', noteId).single()
+    if (note?.validated_at) {
+        return { error: 'Ce journal est validé et ne peut plus être supprimé.' }
+    }
+
     const { error } = await supabase
         .from('project_notes')
         .delete()
@@ -115,22 +133,42 @@ export async function deleteNote(formData: FormData) {
 }
 
 // ────────────────────────────────────────────
-// تأكيد قراءة الملاحظات (صاحب المشروع فقط)
-// Validate notes (project owner only)
+// تأكيد قراءة ملاحظة محددة (Journal)
+// Validate specific note (Project Owner only)
 // ────────────────────────────────────────────
 
-export async function validateNotes(formData: FormData) {
+export async function validateNote(formData: FormData) {
+    const noteId = formData.get('note_id') as string
     const projectId = formData.get('project_id') as string
 
-    const supabase = createClient()
+    const session = await getSession()
+    if (!session) return { error: 'Unauthorized' }
 
-    const { error } = await supabase
+    const supabase = createClient()
+    const adminClient = createAdminClient()
+
+    // Verify user is the project owner
+    const { data: project } = await supabase
         .from('projects')
-        .update({ notes_validated_at: new Date().toISOString() })
+        .select('employee_id')
         .eq('id', projectId)
+        .single()
+
+    const currentUser = await supabase.from('employees').select('role').eq('id', session.id).single()
+    const isOwner = project?.employee_id === session.id
+    const isAdmin = currentUser.data?.role === 'Administrator'
+
+    if (!isOwner && !isAdmin) {
+        return { error: 'Seul le responsable du projet peut valider ce journal.' }
+    }
+
+    const { error } = await adminClient
+        .from('project_notes')
+        .update({ validated_at: new Date().toISOString() })
+        .eq('id', noteId)
 
     if (error) {
-        console.error('Error validating notes:', error)
+        console.error('Error validating note:', error)
         return { error: error.message }
     }
 

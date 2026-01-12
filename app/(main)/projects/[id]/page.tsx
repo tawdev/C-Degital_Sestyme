@@ -20,13 +20,13 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
     // Fetch project and notes data
     // Use adminClient for fetching project data to ensure visibility (bypass RLS)
     // Fetch tasks using standard supabase client to enforce RLS (only collaborators see tasks)
-    const [projectRes, notesRes, tasksRes] = await Promise.all([
+    const [projectRes, notesRes, tasksRes, adminRes] = await Promise.all([
         adminClient
             .from('projects')
             .select('*, employees!projects_employee_id_fkey(id, full_name, role)')
             .eq('id', params.id)
             .single(),
-        supabase
+        adminClient
             .from('project_notes')
             .select('*, author:employees(full_name, role)')
             .eq('project_id', params.id)
@@ -35,7 +35,8 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
             .from('project_tasks')
             .select('*, assignee:employees!assignee_id(full_name)')
             .eq('project_id', params.id)
-            .order('created_at', { ascending: true })
+            .order('created_at', { ascending: true }),
+        supabase.from('employees').select('role').eq('id', session.id).single()
     ])
 
     const project = projectRes.data
@@ -256,6 +257,7 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
                     currentUserId={session.id}
                     notes={notes}
                     notesValidatedAt={project.notes_validated_at}
+                    isAdmin={adminRes.data?.role === 'Administrator'}
                 />
             </div>
         </div>
