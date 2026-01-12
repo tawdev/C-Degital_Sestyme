@@ -27,7 +27,7 @@ export default async function ChatDetailPage({
     let initializationError = false
     let conversationId = activeId
 
-    // 1. Handle "new" conversation (Admin/Employee clicking someone they haven't chatted with)
+    // 1. Handle "new" conversation
     if (activeId === 'new') {
         const employeeId = typeof searchParams?.employee_id === 'string' ? searchParams.employee_id : undefined
         if (employeeId) {
@@ -35,11 +35,7 @@ export default async function ChatDetailPage({
             const resolvedId = await startConversation(employeeId)
             if (resolvedId) {
                 redirect(`/messages/${resolvedId}`)
-            } else {
-                initializationError = true
             }
-        } else {
-            redirect('/messages')
         }
     }
 

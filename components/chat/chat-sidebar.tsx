@@ -8,6 +8,8 @@ import { useSearchParams, useParams } from 'next/navigation'
 import UnreadBadge from './unread-badge'
 import { Plus, Users } from 'lucide-react'
 import GroupChatModal from './group-chat-modal'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 
 interface ChatSidebarProps {
     conversations: ChatConversation[]
@@ -23,10 +25,29 @@ export default function ChatSidebar({ conversations, contacts, activeId: propAct
     const activeId = params?.id as string || propActiveId
     const [isGroupModalOpen, setIsGroupModalOpen] = useState(false)
     const [mounted, setMounted] = useState(false)
+    const router = useRouter()
 
     useEffect(() => {
         setMounted(true)
-    }, [])
+
+        const supabase = createClient()
+        // Subscribe to changes in conversations (triggered by new messages)
+        const channel = supabase
+            .channel('sidebar-reorder')
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'conversations' },
+                () => {
+                    console.log('[ChatSidebar] Activity detected, refreshing...')
+                    router.refresh()
+                }
+            )
+            .subscribe()
+
+        return () => {
+            supabase.removeChannel(channel)
+        }
+    }, [router])
 
     // Display all active conversations (including groups) followed by contacts who don't have a chat yet
     const displayItems = [
@@ -111,12 +132,25 @@ export default function ChatSidebar({ conversations, contacts, activeId: propAct
                                             </p>
                                             {!isContact && (
                                                 <span className="text-[10px] text-gray-400" suppressHydrationWarning>
-                                                    {mounted ? new Date(item.created_at).toLocaleDateString() : ''}
+                                                    {mounted ? (
+                                                        item.last_message_at
+                                                            ? new Date(item.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                                            : new Date(item.created_at).toLocaleDateString()
+                                                    ) : ''}
                                                 </span>
                                             )}
                                         </div>
-                                        <p className="text-xs text-gray-500 truncate">
-                                            {isGroup ? `${(existingConversation as any).participants?.length || 0} members` : (employee?.role || 'Team Member')}
+                                        <p className="text-xs text-gray-500 truncate mt-0.5">
+                                            {isGroup ? (
+                                                item.last_message_content ? (
+                                                    <span className="flex items-center gap-1">
+                                                        <span className="font-bold text-indigo-600/80">{item.last_sender_name?.split(' ')[0]}:</span>
+                                                        <span className="truncate">{item.last_message_content}</span>
+                                                    </span>
+                                                ) : `${(existingConversation as any).participants?.length || 0} members`
+                                            ) : (
+                                                item.last_message_content || (employee?.role || 'Team Member')
+                                            )}
                                         </p>
                                     </div>
                                 </div>

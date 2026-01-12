@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ChatMessage, ChatRole } from '@/lib/types/chat'
 import { sendMessage, getMessages, markConversationAsRead, deleteMessage, toggleReaction, getConversationDetails } from '@/app/(main)/chat/actions' // Correct path
-import { Send, Loader2, Paperclip, Mic, X, File as FileIcon, Square, CheckCircle2, Download, Trash2, SmilePlus, Users, Settings } from 'lucide-react'
+import { Send, Loader2, Paperclip, Mic, X, File as FileIcon, Square, CheckCircle2, Download, Trash2, SmilePlus, Users, Settings, Phone, Video as VideoIcon } from 'lucide-react'
 import EmployeeAvatar from '@/components/employee-avatar'
 import GroupSettingsModal from './group-settings-modal'
+import { useCall } from './call-manager'
 
 interface ChatWindowProps {
     conversationId: string
@@ -32,6 +33,7 @@ export default function ChatWindow({ conversationId, currentUser, recipient }: C
     const [isGroup, setIsGroup] = useState(false)
     const [groupMembers, setGroupMembers] = useState<any[]>([])
     const [showGroupSettings, setShowGroupSettings] = useState(false)
+    const { startCall } = useCall()
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLInputElement>(null)
 
@@ -158,6 +160,27 @@ export default function ChatWindow({ conversationId, currentUser, recipient }: C
 
                     setMessages((prev) => {
                         if (prev.some(m => m.id === newMessage.id)) return prev
+
+                        // Attach sender info if missing (Realtime payload doesn't include joins)
+                        if (!newMessage.sender) {
+                            if (newMessage.sender_id === currentUser.id) {
+                                newMessage.sender = {
+                                    id: currentUser.id,
+                                    full_name: currentUser.full_name,
+                                    avatar_url: currentUser.avatar_url
+                                }
+                            } else {
+                                const member = groupMembers.find(m => m.id === newMessage.sender_id)
+                                if (member) {
+                                    newMessage.sender = {
+                                        id: member.id,
+                                        full_name: member.full_name,
+                                        avatar_url: member.avatar_url
+                                    }
+                                }
+                            }
+                        }
+
                         return [...prev, newMessage]
                     })
                     setTimeout(scrollToBottom, 50)
@@ -357,7 +380,14 @@ export default function ChatWindow({ conversationId, currentUser, recipient }: C
             duration: isAudio ? recordingTime : null
         }
 
-        setMessages(prev => [...prev, optimisticMsg])
+        setMessages(prev => [...prev, {
+            ...optimisticMsg,
+            sender: {
+                id: currentUser.id,
+                full_name: currentUser.full_name,
+                avatar_url: currentUser.avatar_url
+            }
+        }])
         setTimeout(scrollToBottom, 50)
 
         try {
@@ -527,27 +557,35 @@ export default function ChatWindow({ conversationId, currentUser, recipient }: C
                                 <Settings className="w-3 h-3 text-gray-400" />
                             )}
                         </div>
-                        {isGroup ? (
-                            <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1 group relative cursor-help">
-                                <span>{groupMembers.length} members</span>
-                                <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
-                                <span className="truncate max-w-[150px]">
-                                    {groupMembers.slice(0, 3).map(m => m.full_name?.split(' ')[0]).join(', ')}
-                                    {groupMembers.length > 3 && '...'}
-                                </span>
-
-                                {/* Hover tooltip for member list */}
-                                <span className="absolute left-0 top-full mt-1 bg-gray-900 text-white text-[10px] p-2 rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity z-50 whitespace-nowrap pointer-events-none">
-                                    {groupMembers.map(m => m.full_name).join('\n')}
-                                </span>
-                            </p>
-                        ) : (
-                            <p className="text-[10px] text-emerald-500 font-medium mt-1 flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-                                Online
-                            </p>
-                        )}
                     </div>
+                </div>
+
+                <div className="flex items-center gap-1">
+                    {!isGroup && (
+                        <>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    startCall(otherUser!.id, otherUser!.full_name, otherUser!.avatar_url, 'audio')
+                                }}
+                                className="p-2 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
+                                title="Voice Call"
+                            >
+                                <Phone className="w-5 h-5" />
+                            </button>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    startCall(otherUser!.id, otherUser!.full_name, otherUser!.avatar_url, 'video')
+                                }}
+                                className="p-2 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
+                                title="Video Call"
+                            >
+                                <VideoIcon className="w-5 h-5" />
+                            </button>
+                            <div className="w-px h-6 bg-gray-200 mx-1"></div>
+                        </>
+                    )}
                 </div>
             </div>
 
@@ -568,109 +606,130 @@ export default function ChatWindow({ conversationId, currentUser, recipient }: C
                             id={`msg-${msg.id}`}
                             className={`flex ${msg.sender_id === currentUser.id ? 'justify-end' : 'justify-start'} group transition-all duration-300 mb-4 gap-2`}
                         >
-                            {/* Message Wrapper for relative positioning of actions */}
-                            <div className={`relative group max-w-[70%] flex items-end gap-2 ${msg.sender_id === currentUser.id ? 'flex-row-reverse' : 'flex-row'}`}>
-
-                                {/* Bubble */}
-                                <div className={`relative px-4 py-2 shadow-sm ${msg.sender_id === currentUser.id
-                                    ? 'bg-indigo-600 text-white rounded-2xl rounded-tr-sm'
-                                    : 'bg-white text-gray-900 rounded-2xl rounded-tl-sm border border-gray-100'
-                                    }`}>
-                                    {(msg as any).type === 'image' ? (
-                                        <div className="mb-1 relative group/image">
-                                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                                            <a href={msg.content} target="_blank" rel="noopener noreferrer" className="block cursor-zoom-in">
-                                                <img src={msg.content} alt="Image sent" className="rounded-lg max-h-64 object-cover w-full hover:opacity-95 transition-opacity" />
-                                            </a>
-                                            <button
-                                                className="absolute bottom-2 right-2 p-1.5 bg-black/50 hover:bg-black/70 text-white rounded-full opacity-0 group-hover/image:opacity-100 transition-opacity backdrop-blur-sm z-10 cursor-pointer border-none"
-                                                title="Download Image"
-                                                onClick={(e) => handleDownload(e, msg.content, (msg as any).file_name || 'image.png')}
-                                            >
-                                                <Download className="h-4 w-4" />
-                                            </button>
-                                        </div>
-                                    ) : (msg as any).type === 'audio' ? (
-                                        <div className="flex items-center gap-2 min-w-[200px]">
-                                            <audio controls src={msg.content} className="w-full h-8" />
-                                        </div>
-                                    ) : (msg as any).type === 'file' ? (
-                                        <div className="flex items-center gap-3 bg-black/10 p-2 rounded-lg">
-                                            <div className="bg-white/20 p-2 rounded">
-                                                <FileIcon className="h-6 w-6" />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-medium truncate">{(msg as any).file_name || 'File'}</p>
-                                                <p className="text-xs opacity-70">{(msg as any).file_size ? `${Math.round((msg as any).file_size / 1024)} KB` : 'Attachment'}</p>
-                                            </div>
-                                            <button
-                                                onClick={(e) => handleDownload(e, msg.content, (msg as any).file_name || 'file')}
-                                                className="p-1.5 hover:bg-white/20 rounded-full transition-colors cursor-pointer border-none text-gray-700"
-                                                title="Download"
-                                            >
-                                                <Download className="h-4 w-4" />
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-                                    )}
-
-                                    <p className={`text-[10px] mt-1 text-right ${msg.sender_id === currentUser.id ? 'text-indigo-100' : 'text-gray-400'}`}>
-                                        {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    </p>
-
-                                    {/* Reactions Display (On Bubble) */}
-                                    {msg.reactions?.length > 0 && (
-                                        <div className="flex flex-wrap gap-1 mt-2 justify-end">
-                                            {Array.from(new Set(msg.reactions.map(r => r.emoji))).map(emoji => {
-                                                const count = msg.reactions.filter(r => r.emoji === emoji).length;
-                                                const isMe = msg.reactions.some(r => r.emoji === emoji && r.user_id === currentUser.id);
-                                                return (
-                                                    <button
-                                                        key={emoji}
-                                                        onClick={() => handleReaction(msg.id, emoji)}
-                                                        className={`text-[10px] flex items-center gap-0.5 px-1.5 py-0.5 rounded-full transition-colors ${isMe
-                                                            ? 'bg-indigo-500/20 text-white border border-indigo-400/30'
-                                                            : 'bg-gray-100 text-gray-600 border border-gray-200'
-                                                            } ${msg.sender_id === currentUser.id && isMe ? 'bg-white/20 text-white' : ''}`}
-                                                    >
-                                                        <span>{emoji}</span>
-                                                        {count > 1 && <span className="font-medium">{count}</span>}
-                                                    </button>
-                                                )
-                                            })}
-                                        </div>
-                                    )}
+                            {/* Avatar for others in group chats */}
+                            {isGroup && msg.sender_id !== currentUser.id && (
+                                <div className="flex-shrink-0 self-end mb-1">
+                                    <EmployeeAvatar
+                                        avatarUrl={msg.sender?.avatar_url || null}
+                                        fullName={msg.sender?.full_name || '...'}
+                                        className="w-8 h-8 rounded-full border border-gray-100 shadow-sm"
+                                    />
                                 </div>
+                            )}
 
-                                {/* Reaction Picker & Delete (Outside Bubble, Inside Relative Wrapper) */}
-                                <div className={`opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center absolute top-full left-0 right-0 z-50 ${msg.sender_id === currentUser.id ? 'justify-end' : 'justify-start'
-                                    } pt-2 pointer-events-auto`}>
-                                    <div className={`bg-white/95 backdrop-blur-sm shadow-xl rounded-full border border-gray-100 flex items-center p-1.5 gap-1 whitespace-nowrap ${msg.sender_id === currentUser.id ? 'flex-row-reverse' : 'flex-row'
+                            {/* Message Wrapper for relative positioning of actions */}
+                            <div className={`relative group max-w-[70%] flex flex-col ${msg.sender_id === currentUser.id ? 'items-end' : 'items-start'} gap-1`}>
+
+                                {/* Sender Name in Group Chats */}
+                                {isGroup && msg.sender_id !== currentUser.id && (
+                                    <span className="text-[11px] font-semibold text-gray-500 ml-1 mb-0.5">
+                                        {msg.sender?.full_name?.split(' ')[0] || '...'}
+                                    </span>
+                                )}
+
+                                <div className={`flex items-end gap-2 ${msg.sender_id === currentUser.id ? 'flex-row-reverse' : 'flex-row'}`}>
+
+                                    {/* Bubble */}
+                                    <div className={`relative px-4 py-2 shadow-sm ${msg.sender_id === currentUser.id
+                                        ? 'bg-indigo-600 text-white rounded-2xl rounded-tr-sm'
+                                        : 'bg-white text-gray-900 rounded-2xl rounded-tl-sm border border-gray-100'
                                         }`}>
-                                        {emojis.map(emoji => (
-                                            <button
-                                                key={emoji}
-                                                onClick={() => handleReaction(msg.id, emoji)}
-                                                className="p-1.5 hover:bg-gray-100 rounded-full hover:scale-125 transition-transform text-lg leading-none"
-                                            >
-                                                {emoji}
-                                            </button>
-                                        ))}
-
-                                        {/* Delete Button inside the pill */}
-                                        {msg.sender_id === currentUser.id && currentUser.role !== 'admin' && (
-                                            <>
-                                                <div className="w-px h-4 bg-gray-200 mx-1"></div>
+                                        {(msg as any).type === 'image' ? (
+                                            <div className="mb-1 relative group/image">
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <a href={msg.content} target="_blank" rel="noopener noreferrer" className="block cursor-zoom-in">
+                                                    <img src={msg.content} alt="Image sent" className="rounded-lg max-h-64 object-cover w-full hover:opacity-95 transition-opacity" />
+                                                </a>
                                                 <button
-                                                    onClick={() => handleDelete(msg.id)}
-                                                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
-                                                    title="Delete Message"
+                                                    className="absolute bottom-2 right-2 p-1.5 bg-black/50 hover:bg-black/70 text-white rounded-full opacity-0 group-hover/image:opacity-100 transition-opacity backdrop-blur-sm z-10 cursor-pointer border-none"
+                                                    title="Download Image"
+                                                    onClick={(e) => handleDownload(e, msg.content, (msg as any).file_name || 'image.png')}
                                                 >
-                                                    <Trash2 className="h-4 w-4" />
+                                                    <Download className="h-4 w-4" />
                                                 </button>
-                                            </>
+                                            </div>
+                                        ) : (msg as any).type === 'audio' ? (
+                                            <div className="flex items-center gap-2 min-w-[200px]">
+                                                <audio controls src={msg.content} className="w-full h-8" />
+                                            </div>
+                                        ) : (msg as any).type === 'file' ? (
+                                            <div className="flex items-center gap-3 bg-black/10 p-2 rounded-lg">
+                                                <div className="bg-white/20 p-2 rounded">
+                                                    <FileIcon className="h-6 w-6" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-medium truncate">{(msg as any).file_name || 'File'}</p>
+                                                    <p className="text-xs opacity-70">{(msg as any).file_size ? `${Math.round((msg as any).file_size / 1024)} KB` : 'Attachment'}</p>
+                                                </div>
+                                                <button
+                                                    onClick={(e) => handleDownload(e, msg.content, (msg as any).file_name || 'file')}
+                                                    className="p-1.5 hover:bg-white/20 rounded-full transition-colors cursor-pointer border-none text-gray-700"
+                                                    title="Download"
+                                                >
+                                                    <Download className="h-4 w-4" />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
                                         )}
+
+                                        <p className={`text-[10px] mt-1 text-right ${msg.sender_id === currentUser.id ? 'text-indigo-100' : 'text-gray-400'}`}>
+                                            {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </p>
+
+                                        {/* Reactions Display (On Bubble) */}
+                                        {msg.reactions?.length > 0 && (
+                                            <div className="flex flex-wrap gap-1 mt-2 justify-end">
+                                                {Array.from(new Set(msg.reactions.map(r => r.emoji))).map(emoji => {
+                                                    const count = msg.reactions.filter(r => r.emoji === emoji).length;
+                                                    const isMe = msg.reactions.some(r => r.emoji === emoji && r.user_id === currentUser.id);
+                                                    return (
+                                                        <button
+                                                            key={emoji}
+                                                            onClick={() => handleReaction(msg.id, emoji)}
+                                                            className={`text-[10px] flex items-center gap-0.5 px-1.5 py-0.5 rounded-full transition-colors ${isMe
+                                                                ? 'bg-indigo-500/20 text-white border border-indigo-400/30'
+                                                                : 'bg-gray-100 text-gray-600 border border-gray-200'
+                                                                } ${msg.sender_id === currentUser.id && isMe ? 'bg-white/20 text-white' : ''}`}
+                                                        >
+                                                            <span>{emoji}</span>
+                                                            {count > 1 && <span className="font-medium">{count}</span>}
+                                                        </button>
+                                                    )
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Reaction Picker & Delete (Outside Bubble, Inside Relative Wrapper) */}
+                                    <div className={`opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center absolute top-full left-0 right-0 z-50 ${msg.sender_id === currentUser.id ? 'justify-end' : 'justify-start'
+                                        } pt-2 pointer-events-auto`}>
+                                        <div className={`bg-white/95 backdrop-blur-sm shadow-xl rounded-full border border-gray-100 flex items-center p-1.5 gap-1 whitespace-nowrap ${msg.sender_id === currentUser.id ? 'flex-row-reverse' : 'flex-row'
+                                            }`}>
+                                            {emojis.map(emoji => (
+                                                <button
+                                                    key={emoji}
+                                                    onClick={() => handleReaction(msg.id, emoji)}
+                                                    className="p-1.5 hover:bg-gray-100 rounded-full hover:scale-125 transition-transform text-lg leading-none"
+                                                >
+                                                    {emoji}
+                                                </button>
+                                            ))}
+
+                                            {/* Delete Button inside the pill */}
+                                            {msg.sender_id === currentUser.id && currentUser.role !== 'admin' && (
+                                                <>
+                                                    <div className="w-px h-4 bg-gray-200 mx-1"></div>
+                                                    <button
+                                                        onClick={() => handleDelete(msg.id)}
+                                                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                                                        title="Delete Message"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>

@@ -18,6 +18,11 @@ export interface ChatMessage {
         user_id: string
         emoji: string
     }[]
+    sender?: {
+        id: string
+        full_name: string
+        avatar_url: string | null
+    }
 }
 
 export interface ChatMessageReaction {
@@ -58,4 +63,9 @@ export interface ChatConversation {
         role?: string
     }
     participants?: ChatParticipant[]
+    // Last activity fields
+    last_message_at?: string
+    last_message_content?: string
+    last_message_sender_id?: string
+    last_sender_name?: string
 }

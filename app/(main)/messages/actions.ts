@@ -70,6 +70,7 @@ async function fetchAndMapConversations(conversationIds: string[]) {
             *,
             user1:employees!conversations_user1_id_fkey(id, full_name, avatar_url),
             user2:employees!conversations_user2_id_fkey(id, full_name, avatar_url),
+            last_sender:employees!conversations_last_message_sender_id_fkey(id, full_name, avatar_url),
             participants:conversation_participants(
                 id,
                 user_id,
@@ -77,7 +78,7 @@ async function fetchAndMapConversations(conversationIds: string[]) {
             )
         `)
         .in('id', conversationIds)
-        .order('created_at', { ascending: false })
+        .order('last_message_at', { ascending: false })
 
     if (error) {
         console.error('Error fetching conversations:', error)
@@ -119,6 +120,7 @@ export async function getConversations() {
     // Map to include "other participant" info easily for P2P
     // Map to include "other participant" info easily for P2P
     return data.map(conv => {
+        const last_sender_name = (conv as any).last_sender?.full_name || 'System'
         if (conv.is_group) {
             return {
                 ...conv,
@@ -128,12 +130,14 @@ export async function getConversations() {
                     avatar_url: conv.avatar_url,
                     role: 'Group'
                 },
+                last_sender_name,
                 employee_id: `group:${conv.id}`,
                 unread_count: unreadMap[conv.id] || 0
             }
         }
         return {
             ...conv,
+            last_sender_name,
             employee: conv.user1_id === userId ? conv.user2 : conv.user1,
             employee_id: conv.user1_id === userId ? conv.user2_id : conv.user1_id,
             unread_count: unreadMap[conv.id] || 0
@@ -146,7 +150,10 @@ export async function getMessages(conversationId: string) {
 
     let { data, error } = await adminClient
         .from('messages')
-        .select('*')
+        .select(`
+            *,
+            sender:employees(id, full_name, avatar_url)
+        `)
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: true })
 

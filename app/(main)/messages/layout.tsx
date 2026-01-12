@@ -1,11 +1,11 @@
-import { getSession } from '@/app/auth/actions'
-import { redirect } from 'next/navigation'
-import { getConversations, getEmployees } from './actions'
 import ChatSidebar from '@/components/chat/chat-sidebar'
+import { getConversations, getEmployees } from './actions'
+import { getSession } from '@/app/auth/actions'
 import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 
 export default async function MessagesLayout({
-    children,
+    children
 }: {
     children: React.ReactNode
 }) {
@@ -15,7 +15,7 @@ export default async function MessagesLayout({
     const supabase = createClient()
     const { data: employee } = await supabase
         .from('employees')
-        .select('role')
+        .select('role, avatar_url')
         .eq('id', session.id)
         .single()
 
@@ -30,9 +30,9 @@ export default async function MessagesLayout({
     const contacts = allEmployees.filter(e => e.id !== session.id)
 
     return (
-        <div className="h-[calc(100vh-8rem)] bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex">
+        <div className="h-[calc(100vh-10rem)] bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex">
             {/* Sidebar */}
-            <div className="w-80 border-r border-gray-200 flex-shrink-0 flex flex-col">
+            <div className="w-80 border-r border-gray-200 flex-shrink-0 flex flex-col h-full overflow-hidden">
                 <div className="p-4 border-b border-gray-200 bg-gray-50/50">
                     <h2 className="text-lg font-bold text-gray-900">Messages</h2>
                     <p className="text-xs text-gray-500">
@@ -47,8 +47,8 @@ export default async function MessagesLayout({
                 />
             </div>
 
-            {/* Content Area */}
-            <div className="flex-1 flex flex-col bg-gray-50/30">
+            {/* Main Chat Area */}
+            <div className="flex-1 flex flex-col bg-gray-50/30 overflow-hidden h-full">
                 {children}
             </div>
         </div>
