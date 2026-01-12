@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import CallOverlay from './call-overlay'
+import CallOverlay from '@/components/chat/call-overlay'
 
 interface CallState {
     isActive: boolean
@@ -39,21 +39,37 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
 
     const [isMuted, setIsMuted] = useState(false)
     const [isCameraOff, setIsCameraOff] = useState(false)
+    const [localStream, setLocalStream] = useState<MediaStream | null>(null)
+    const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
+    const localStreamRef = useRef<MediaStream | null>(null)
+    const remoteStreamRef = useRef<MediaStream | null>(null)
 
     const supabase = createClient()
     const peerConnection = useRef<RTCPeerConnection | null>(null)
-    const localStream = useRef<MediaStream | null>(null)
-    const remoteStream = useRef<MediaStream | null>(null)
+    const pendingCandidates = useRef<RTCIceCandidateInit[]>([])
     const channelRef = useRef<any>(null)
 
-    const configuration = {
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    const configuration: RTCConfiguration = {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' }
+        ],
+        iceCandidatePoolSize: 10
+    }
+
+    const broadcastSignal = (signal: string, from: string, to: string, payload: any = {}) => {
+        console.log(`[CallManager] Signal: ${signal} -> ${to}`)
+        channelRef.current?.send({
+            type: 'broadcast',
+            event: 'call-signal',
+            payload: { signal, from, to, ...payload }
+        })
     }
 
     useEffect(() => {
         console.log('[CallManager] Initializing signaling for User ID:', currentUser.id)
 
-        // Using a clean channel name
         const channel = supabase.channel('calls_v1', {
             config: {
                 broadcast: { ack: true }
@@ -62,24 +78,17 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
             .on('broadcast', { event: 'call-signal' }, async ({ payload }) => {
                 const { signal, from, to, type, metadata } = payload
 
-                // CRITICAL: Log every signal received
-                console.log(`[CallManager] Received ${signal} from ${from} to ${to}. (Our ID: ${currentUser.id})`)
+                if (to !== currentUser.id) return
 
-                if (to !== currentUser.id) {
-                    return
-                }
-
-                console.log(`[CallManager] Signal accepted! Processing ${signal}...`)
+                console.log(`[CallManager] Received ${signal} from ${from}`)
 
                 switch (signal) {
                     case 'initiate':
                         setCallState(prev => {
                             if (prev.isActive) {
-                                console.log('[CallManager] Already in call, sending busy to:', from)
                                 broadcastSignal('busy', currentUser.id, from)
                                 return prev
                             }
-                            console.log('[CallManager] Triggering incoming call UI for:', metadata.name)
                             return {
                                 isActive: true,
                                 isIncoming: true,
@@ -94,21 +103,19 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                     case 'accept':
                         setCallState(prev => {
                             if (prev.status === 'calling') {
-                                console.log('[CallManager] Remote accepted, sending WebRTC offer')
+                                console.log('[CallManager] Remote accepted, sending offer')
                                 sendOffer(from)
-                                return { ...prev, status: 'connected' }
+                                return prev
                             }
                             return prev
                         })
                         break
 
                     case 'offer':
-                        console.log('[CallManager] Handling WebRTC offer')
                         await handleOffer(payload)
                         break
 
                     case 'answer':
-                        console.log('[CallManager] Handling WebRTC answer')
                         await handleAnswer(payload)
                         break
 
@@ -119,78 +126,18 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                     case 'reject':
                     case 'busy':
                     case 'end':
-                        console.log(`[CallManager] Termination signal: ${signal}`)
                         cleanupCall()
                         break
                 }
             })
-            .subscribe((status) => {
-                console.log('[CallManager] Signaling channel subscription status:', status)
-            })
+            .subscribe()
 
         channelRef.current = channel
 
         return () => {
-            console.log('[CallManager] Cleaning up signaling sub')
             supabase.removeChannel(channel)
         }
     }, [currentUser.id])
-
-    const broadcastSignal = (signal: string, from: string, to: string, payload: any = {}) => {
-        console.log(`[CallManager] Broadcasting signal: ${signal} to: ${to}`)
-        channelRef.current?.send({
-            type: 'broadcast',
-            event: 'call-signal',
-            payload: { signal, from, to, ...payload }
-        })
-    }
-
-    const startCall = async (recipientId: string, recipientName: string, recipientAvatar: string | null, type: 'audio' | 'video') => {
-        try {
-            console.log(`[CallManager] Starting ${type} call to:`, recipientId)
-            cleanupCall()
-
-            setCallState({
-                isActive: true,
-                isIncoming: false,
-                type,
-                caller: null,
-                recipientId,
-                status: 'calling'
-            })
-
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: type === 'video',
-                audio: true
-            })
-            localStream.current = stream
-
-            broadcastSignal('initiate', currentUser.id, recipientId, {
-                type,
-                metadata: { name: currentUser.full_name, avatar: currentUser.avatar_url }
-            })
-
-            setupPeerConnection(recipientId)
-            stream.getTracks().forEach(track => {
-                if (localStream.current) peerConnection.current?.addTrack(track, localStream.current)
-            })
-
-        } catch (err) {
-            console.error('[CallManager] Failed to start call:', err)
-            cleanupCall()
-        }
-    }
-
-    const sendOffer = async (recipientId: string) => {
-        if (!peerConnection.current) return
-        try {
-            const offer = await peerConnection.current.createOffer()
-            await peerConnection.current.setLocalDescription(offer)
-            broadcastSignal('offer', currentUser.id, recipientId, { sdp: offer })
-        } catch (err) {
-            console.error('[CallManager] Error sending offer:', err)
-        }
-    }
 
     const setupPeerConnection = (otherUserId: string) => {
         console.log('[CallManager] Setting up RTCPeerConnection for:', otherUserId)
@@ -203,26 +150,114 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         }
 
         pc.ontrack = (event) => {
-            console.log('[CallManager] Remote track received')
-            remoteStream.current = event.streams[0]
-            setCallState(prev => ({ ...prev }))
+            console.log(`[CallManager] Remote ${event.track.kind} track received`)
+
+            setRemoteStream(prev => {
+                const stream = prev || new MediaStream()
+                if (!stream.getTracks().find(t => t.id === event.track.id)) {
+                    stream.addTrack(event.track)
+                    console.log(`[CallManager] Added ${event.track.kind} track to remote stream`)
+                }
+                return new MediaStream(stream.getTracks())
+            })
+
+            if (event.streams[0]) {
+                remoteStreamRef.current = event.streams[0]
+            }
+        }
+
+        pc.oniceconnectionstatechange = () => {
+            console.log('[CallManager] ICE Connection State:', pc.iceConnectionState)
+            if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+                setCallState(prev => {
+                    if (prev.status !== 'connected') {
+                        console.log('[CallManager] Call linked and connected!')
+                        return { ...prev, status: 'connected' }
+                    }
+                    return prev
+                })
+            }
+        }
+
+        pc.onconnectionstatechange = () => {
+            console.log('[CallManager] Connection State:', pc.connectionState)
+            if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+                cleanupCall()
+            }
         }
 
         peerConnection.current = pc
+        return pc
+    }
+
+    const startCall = async (recipientId: string, recipientName: string, recipientAvatar: string | null, type: 'audio' | 'video') => {
+        try {
+            console.log(`[CallManager] Starting ${type} call to:`, recipientId)
+            cleanupCall()
+
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: type === 'video',
+                audio: true
+            })
+            localStreamRef.current = stream
+            setLocalStream(stream)
+
+            setCallState({
+                isActive: true,
+                isIncoming: false,
+                type,
+                caller: null,
+                recipientId,
+                status: 'calling'
+            })
+
+            broadcastSignal('initiate', currentUser.id, recipientId, {
+                type,
+                metadata: { name: currentUser.full_name, avatar: currentUser.avatar_url }
+            })
+
+            const pc = setupPeerConnection(recipientId)
+            stream.getTracks().forEach(track => pc.addTrack(track, stream))
+
+        } catch (err) {
+            console.error('[CallManager] Failed to start call:', err)
+            cleanupCall()
+        }
+    }
+
+    const sendOffer = async (recipientId: string) => {
+        const pc = peerConnection.current
+        if (!pc) return
+        try {
+            const offer = await pc.createOffer()
+            await pc.setLocalDescription(offer)
+            broadcastSignal('offer', currentUser.id, recipientId, { sdp: offer })
+        } catch (err) {
+            console.error('[CallManager] Error sending offer:', err)
+        }
     }
 
     const handleOffer = async (payload: any) => {
-        if (!peerConnection.current) {
-            setupPeerConnection(payload.from)
-            localStream.current?.getTracks().forEach(track => {
-                if (localStream.current) peerConnection.current?.addTrack(track, localStream.current)
-            })
+        console.log('[CallManager] Handling WebRTC offer')
+        let pc = peerConnection.current
+        if (!pc) {
+            pc = setupPeerConnection(payload.from)
+            const stream = localStreamRef.current
+            if (stream) {
+                stream.getTracks().forEach(track => pc!.addTrack(track, stream))
+            }
         }
 
         try {
-            await peerConnection.current?.setRemoteDescription(new RTCSessionDescription(payload.sdp))
-            const answer = await peerConnection.current?.createAnswer()
-            await peerConnection.current?.setLocalDescription(answer!)
+            await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp))
+
+            while (pendingCandidates.current.length > 0) {
+                const candidate = pendingCandidates.current.shift()
+                await pc.addIceCandidate(new RTCIceCandidate(candidate!))
+            }
+
+            const answer = await pc.createAnswer()
+            await pc.setLocalDescription(answer)
             broadcastSignal('answer', currentUser.id, payload.from, { sdp: answer })
         } catch (err) {
             console.error('[CallManager] Error handling offer:', err)
@@ -230,9 +265,14 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
     }
 
     const handleAnswer = async (payload: any) => {
-        if (peerConnection.current) {
+        const pc = peerConnection.current
+        if (pc) {
             try {
-                await peerConnection.current.setRemoteDescription(new RTCSessionDescription(payload.sdp))
+                await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp))
+                while (pendingCandidates.current.length > 0) {
+                    const candidate = pendingCandidates.current.shift()
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate!))
+                }
             } catch (err) {
                 console.error('[CallManager] Error handling answer:', err)
             }
@@ -240,12 +280,16 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
     }
 
     const handleIceCandidate = async (payload: any) => {
-        if (peerConnection.current && peerConnection.current.remoteDescription) {
+        const pc = peerConnection.current
+        if (pc && pc.remoteDescription) {
             try {
-                await peerConnection.current.addIceCandidate(new RTCIceCandidate(payload.candidate))
+                await pc.addIceCandidate(new RTCIceCandidate(payload.candidate))
             } catch (e) {
                 console.error('[CallManager] Error adding ice candidate', e)
             }
+        } else {
+            console.log('[CallManager] Queuing ICE candidate')
+            pendingCandidates.current.push(payload.candidate)
         }
     }
 
@@ -258,9 +302,10 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                 video: callState.type === 'video',
                 audio: true
             })
-            localStream.current = stream
+            localStreamRef.current = stream
+            setLocalStream(stream)
 
-            setCallState(prev => ({ ...prev, status: 'connected' }))
+            setCallState(prev => ({ ...prev, status: 'calling' }))
             broadcastSignal('accept', currentUser.id, callState.caller!.id)
         } catch (err) {
             console.error('[CallManager] Failed to accept call:', err)
@@ -270,7 +315,6 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
 
     const rejectCall = () => {
         if (callState.caller) {
-            console.log('[CallManager] Rejecting call from:', callState.caller.id)
             broadcastSignal('reject', currentUser.id, callState.caller.id)
         }
         cleanupCall()
@@ -279,22 +323,27 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
     const endCall = () => {
         const target = callState.isIncoming ? callState.caller?.id : callState.recipientId
         if (target) {
-            console.log('[CallManager] Ending call with:', target)
             broadcastSignal('end', currentUser.id, target)
         }
         cleanupCall()
     }
 
     const cleanupCall = () => {
-        console.log('[CallManager] Cleaning up call state and stream')
-        localStream.current?.getTracks().forEach(track => track.stop())
+        console.log('[CallManager] Cleaning up call')
+
+        if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach(track => track.stop())
+        }
         if (peerConnection.current) {
             peerConnection.current.close()
         }
 
-        localStream.current = null
-        remoteStream.current = null
+        setLocalStream(null)
+        setRemoteStream(null)
+        localStreamRef.current = null
+        remoteStreamRef.current = null
         peerConnection.current = null
+        pendingCandidates.current = []
 
         setCallState({
             isActive: false,
@@ -309,8 +358,9 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
     }
 
     const toggleMute = () => {
-        if (localStream.current) {
-            const audioTrack = localStream.current.getAudioTracks()[0]
+        const stream = localStreamRef.current
+        if (stream) {
+            const audioTrack = stream.getAudioTracks()[0]
             if (audioTrack) {
                 audioTrack.enabled = !audioTrack.enabled
                 setIsMuted(!audioTrack.enabled)
@@ -319,8 +369,9 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
     }
 
     const toggleCamera = () => {
-        if (localStream.current) {
-            const videoTrack = localStream.current.getVideoTracks()[0]
+        const stream = localStreamRef.current
+        if (stream) {
+            const videoTrack = stream.getVideoTracks()[0]
             if (videoTrack) {
                 videoTrack.enabled = !videoTrack.enabled
                 setIsCameraOff(!videoTrack.enabled)
@@ -337,8 +388,8 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
             {callState.isActive && (
                 <CallOverlay
                     state={callState}
-                    localStream={localStream.current}
-                    remoteStream={remoteStream.current}
+                    localStream={localStream}
+                    remoteStream={remoteStream}
                     onEnd={endCall}
                     onAccept={acceptCall}
                     onReject={rejectCall}

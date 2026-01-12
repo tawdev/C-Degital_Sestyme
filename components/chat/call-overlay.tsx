@@ -28,19 +28,32 @@ export default function CallOverlay({
     const [duration, setDuration] = React.useState(0)
 
     useEffect(() => {
-        if (localVideoRef.current && localStream) {
-            localVideoRef.current.srcObject = localStream
+        const video = localVideoRef.current
+        if (video && localStream) {
+            console.log('[CallOverlay] Attaching local stream')
+            video.srcObject = localStream
+            video.play().catch(err => console.error('[CallOverlay] Local video play error:', err))
         }
     }, [localStream])
 
     useEffect(() => {
-        if (remoteVideoRef.current && remoteStream) {
-            remoteVideoRef.current.srcObject = remoteStream
+        const video = remoteVideoRef.current
+        const audio = remoteAudioRef.current
+
+        if (remoteStream) {
+            console.log(`[CallOverlay] Attaching remote stream. Tracks: ${remoteStream.getTracks().length}`)
+
+            if (video && state.type === 'video') {
+                video.srcObject = remoteStream
+                video.play().catch(err => console.error('[CallOverlay] Remote video play error:', err))
+            }
+
+            if (audio) {
+                audio.srcObject = remoteStream
+                audio.play().catch(err => console.error('[CallOverlay] Remote audio play error:', err))
+            }
         }
-        if (remoteAudioRef.current && remoteStream) {
-            remoteAudioRef.current.srcObject = remoteStream
-        }
-    }, [remoteStream])
+    }, [remoteStream, state.type])
 
     // Timer Logic
     useEffect(() => {
@@ -77,6 +90,7 @@ export default function CallOverlay({
                             ref={remoteVideoRef}
                             autoPlay
                             playsInline
+                            onLoadedMetadata={() => console.log('[CallOverlay] Remote video metadata loaded')}
                             className="w-full h-full object-cover"
                         />
                     ) : (
@@ -113,6 +127,7 @@ export default function CallOverlay({
                                     autoPlay
                                     muted
                                     playsInline
+                                    onLoadedMetadata={() => console.log('[CallOverlay] Local video metadata loaded')}
                                     style={{ transform: 'scaleX(-1)' }}
                                     className="w-full h-full object-cover"
                                 />
@@ -175,7 +190,12 @@ export default function CallOverlay({
                 </div>
 
                 {/* Hidden Audio for Remote Stream (Covers Audio-only and Video calls) */}
-                <audio ref={remoteAudioRef} autoPlay playsInline />
+                <audio
+                    ref={remoteAudioRef}
+                    autoPlay
+                    playsInline
+                    onLoadedMetadata={() => console.log('[CallOverlay] Remote audio metadata loaded')}
+                />
             </div>
         </div>
     )
