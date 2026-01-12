@@ -50,7 +50,7 @@ export async function createProject(formData: FormData) {
                 project_id: project.id,
                 title: t.title,
                 status: t.status,
-                assigned_to: t.assigned_to || null
+                assignee_id: t.assigned_to || t.assignee_id || null
             }))
             await adminClient.from('project_tasks').insert(tasksWithProjectId)
         }
@@ -127,7 +127,7 @@ export async function updateProject(formData: FormData) {
                 project_id: id,
                 title: t.title,
                 status: t.status,
-                assigned_to: t.assigned_to || null
+                assignee_id: t.assigned_to || t.assignee_id || null
             }))
             await adminClient.from('project_tasks').insert(tasksWithProjectId)
         }

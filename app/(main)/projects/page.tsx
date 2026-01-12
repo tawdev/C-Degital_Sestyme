@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import Link from 'next/link'
 import { Trash2, Edit, Plus, Globe, User, Activity, Clock, CheckCircle2, Eye } from 'lucide-react'
 import { deleteProject } from './actions'
-import { getSession } from '@/app/auth/actions'
+import { getSession, logout } from '@/app/auth/actions'
 import { redirect } from 'next/navigation'
 import EmployeeAvatar from '@/components/employee-avatar'
 
@@ -46,7 +46,8 @@ export default async function ProjectsPage({
         .single()
 
     if (!currentUser) {
-        redirect('/auth/login')
+        // Redirect to a route handler to perform the logout (cookie deletion)
+        redirect('/auth/signout')
     }
 
     const isAdmin = currentUser.role === 'Administrator'

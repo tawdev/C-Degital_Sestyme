@@ -10,7 +10,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
     const session = await getSession()
 
     if (!session) {
-        redirect('/auth/login')
+        redirect('/auth/signout')
     }
 
     const displayName = session.full_name?.split(' ')[0] || session.email?.split('@')[0] || 'User'

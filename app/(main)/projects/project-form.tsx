@@ -8,7 +8,12 @@ import { Save, ArrowLeft, Type, Globe, Languages, TrendingUp, User, Calendar, Pe
 export default function ProjectForm({ employees, project, currentUserId }: { employees: any[], project?: any, currentUserId?: string }) {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
-    const [tasks, setTasks] = useState<{ id?: string, title: string, status: string, assigned_to?: string }[]>(project?.project_tasks || [])
+    const [tasks, setTasks] = useState<{ id?: string, title: string, status: string, assigned_to?: string }[]>(
+        project?.project_tasks?.map((t: any) => ({
+            ...t,
+            assigned_to: t.assignee_id // Map DB column to form state
+        })) || []
+    )
     const [collaborators, setCollaborators] = useState<string[]>(project?.project_collaborators?.map((c: any) => c.employee_id) || [])
 
     const addTask = () => {
@@ -374,6 +379,7 @@ export default function ProjectForm({ employees, project, currentUserId }: { emp
                                                 className="text-[10px] font-black uppercase tracking-tight py-1 pl-2 pr-6 border-gray-200 rounded-lg bg-gray-50 focus:ring-indigo-500 focus:border-indigo-500"
                                             >
                                                 <option value="pending">En Attente</option>
+                                                <option value="in_progress">En Cours</option>
                                                 <option value="completed">Terminé</option>
                                             </select>
                                             <button

@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation'
 type Task = {
     id: string
     title: string
-    status: 'todo' | 'in_progress' | 'done'
+    status: 'pending' | 'in_progress' | 'completed' | 'todo' | 'done'
     project_id: string
     assignee_id: string | null
     assignee?: {
@@ -33,7 +33,8 @@ export default function TaskList({ tasks, projectId, currentUserId }: TaskListPr
         setUpdatingTaskId(null)
 
         if (!result.success) {
-            alert(result.message) // Simple error feedback
+            console.error("Task update failed:", result.message);
+            alert(result.message) // Show detailed error
         } else {
             // Router refresh happens automatically via server action revalidatePath, but good to be explicit if needed
             // router.refresh() 
@@ -53,18 +54,19 @@ export default function TaskList({ tasks, projectId, currentUserId }: TaskListPr
             {tasks.map((task) => {
                 const isAssignee = task.assignee_id === currentUserId
                 const isUpdating = updatingTaskId === task.id
+                const status = task.status as string // Handle mixed types safely
 
                 // Fallback for old status values if migration didn't map them purely
                 let statusColor = 'bg-gray-100 text-gray-600'
                 let StatusIcon = Circle
 
-                if (task.status === 'done' || task.status === ('completed' as any)) {
+                if (status === 'completed' || status === 'done') {
                     statusColor = 'bg-emerald-100 text-emerald-600'
                     StatusIcon = CheckCircle2
-                } else if (task.status === 'in_progress') {
+                } else if (status === 'in_progress') {
                     statusColor = 'bg-indigo-100 text-indigo-600'
                     StatusIcon = Clock
-                } else if (task.status === 'todo' || task.status === ('pending' as any)) {
+                } else {
                     statusColor = 'bg-amber-100 text-amber-600'
                     StatusIcon = Circle
                 }
@@ -84,7 +86,7 @@ export default function TaskList({ tasks, projectId, currentUserId }: TaskListPr
                                     <StatusIcon className="h-4 w-4" />
                                 </div>
                                 <div>
-                                    <p className={`text-sm font-bold ${task.status === 'done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                                    <p className={`text-sm font-bold ${status === 'completed' || status === 'done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
                                         {task.title}
                                     </p>
                                     <p className="text-[10px] font-black uppercase tracking-tight text-gray-400">
@@ -100,25 +102,25 @@ export default function TaskList({ tasks, projectId, currentUserId }: TaskListPr
                                 <span className="text-[10px] uppercase font-bold text-indigo-400">Modifier Statut</span>
                                 <div className="flex gap-1">
                                     <button
-                                        onClick={() => handleStatusChange(task.id, 'todo')}
-                                        disabled={isUpdating || task.status === 'todo'}
-                                        className={`w-6 h-6 rounded-full border flex items-center justify-center hover:scale-110 transition-transform ${task.status === 'todo' ? 'bg-amber-100 border-amber-300 text-amber-600' : 'bg-white border-gray-200 text-gray-300'}`}
-                                        title="A faire"
+                                        onClick={() => handleStatusChange(task.id, 'pending')}
+                                        disabled={isUpdating || status === 'pending'}
+                                        className={`w-6 h-6 rounded-full border flex items-center justify-center hover:scale-110 transition-transform ${status === 'pending' ? 'bg-amber-100 border-amber-300 text-amber-600' : 'bg-white border-gray-200 text-gray-300'}`}
+                                        title="En attente"
                                     >
                                         <div className="w-2 h-2 rounded-full bg-current" />
                                     </button>
                                     <button
                                         onClick={() => handleStatusChange(task.id, 'in_progress')}
-                                        disabled={isUpdating || task.status === 'in_progress'}
-                                        className={`w-6 h-6 rounded-full border flex items-center justify-center hover:scale-110 transition-transform ${task.status === 'in_progress' ? 'bg-indigo-100 border-indigo-300 text-indigo-600' : 'bg-white border-gray-200 text-gray-300'}`}
+                                        disabled={isUpdating || status === 'in_progress'}
+                                        className={`w-6 h-6 rounded-full border flex items-center justify-center hover:scale-110 transition-transform ${status === 'in_progress' ? 'bg-indigo-100 border-indigo-300 text-indigo-600' : 'bg-white border-gray-200 text-gray-300'}`}
                                         title="En cours"
                                     >
                                         <Clock className="w-3 h-3" />
                                     </button>
                                     <button
-                                        onClick={() => handleStatusChange(task.id, 'done')}
-                                        disabled={isUpdating || task.status === 'done'}
-                                        className={`w-6 h-6 rounded-full border flex items-center justify-center hover:scale-110 transition-transform ${task.status === 'done' ? 'bg-emerald-100 border-emerald-300 text-emerald-600' : 'bg-white border-gray-200 text-gray-300'}`}
+                                        onClick={() => handleStatusChange(task.id, 'completed')}
+                                        disabled={isUpdating || status === 'completed'}
+                                        className={`w-6 h-6 rounded-full border flex items-center justify-center hover:scale-110 transition-transform ${status === 'completed' ? 'bg-emerald-100 border-emerald-300 text-emerald-600' : 'bg-white border-gray-200 text-gray-300'}`}
                                         title="Terminé"
                                     >
                                         <CheckCircle2 className="w-3 h-3" />

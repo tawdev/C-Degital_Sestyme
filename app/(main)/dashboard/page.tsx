@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { Users, Briefcase, Clock, CheckCircle2, TrendingUp, Activity, ArrowUpRight, Plus } from 'lucide-react'
 import Link from 'next/link'
-import { getSession } from '@/app/auth/actions'
+import { getSession, logout } from '@/app/auth/actions'
 import { redirect } from 'next/navigation'
 import EmployeeAvatar from '@/components/employee-avatar'
 
@@ -19,6 +19,10 @@ export default async function DashboardPage() {
         .select('role')
         .eq('id', session.id)
         .single()
+
+    if (!employee) {
+        redirect('/auth/signout')
+    }
 
     if (employee?.role !== 'Administrator') {
         redirect('/projects')
