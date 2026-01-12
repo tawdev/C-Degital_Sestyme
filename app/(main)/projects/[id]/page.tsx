@@ -238,12 +238,14 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
                                 </div>
                             </div>
 
-                            <Link
-                                href={`/projects/${project.id}/edit`}
-                                className="mt-4 w-full text-center py-3 bg-white text-indigo-600 rounded-xl text-xs font-black uppercase tracking-widest border border-indigo-200 hover:bg-indigo-600 hover:text-white transition-all shadow-sm"
-                            >
-                                Modifier le Projet
-                            </Link>
+                            {session.id === project.employee_id && (
+                                <Link
+                                    href={`/projects/${project.id}/edit`}
+                                    className="mt-4 w-full text-center py-3 bg-white text-indigo-600 rounded-xl text-xs font-black uppercase tracking-widest border border-indigo-200 hover:bg-indigo-600 hover:text-white transition-all shadow-sm"
+                                >
+                                    Modifier le Projet
+                                </Link>
+                            )}
                         </div>
                     </div>
                 </div>

@@ -22,7 +22,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
     const [{ data: employee }, unreadCount, journalCount, ownedProjects] = await Promise.all([
         supabase
             .from('employees')
-            .select('role')
+            .select('role, avatar_url')
             .eq('id', session.id)
             .single(),
         getUnreadCount(),
@@ -31,6 +31,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
     ])
 
     const isAdmin = employee?.role === 'Administrator'
+    const avatarUrl = employee?.avatar_url
 
     return (
         <div className="min-h-screen flex flex-col bg-gray-50">
@@ -74,9 +75,6 @@ export default async function MainLayout({ children }: { children: React.ReactNo
                                 >
                                     Messages
                                 </NavLink>
-                                <NavLink href="/profile" icon={User}>
-                                    Profile
-                                </NavLink>
                             </nav>
                         </div>
 
@@ -86,15 +84,26 @@ export default async function MainLayout({ children }: { children: React.ReactNo
                             <JournalBadge initialCount={journalCount} userId={session.id} ownedProjectIds={ownedProjects} />
 
                             {/* User Info */}
-                            <div className="hidden sm:flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200">
-                                <div className="flex-shrink-0 h-8 w-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-semibold">
-                                    {displayName[0].toUpperCase()}
+                            <Link
+                                href="/profile"
+                                className="hidden sm:flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 hover:bg-gray-100 hover:border-gray-300 transition-all cursor-pointer group/user"
+                            >
+                                <div className="flex-shrink-0 h-8 w-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-semibold group-hover/user:shadow-md transition-all overflow-hidden border-2 border-white">
+                                    {avatarUrl ? (
+                                        <img
+                                            src={avatarUrl}
+                                            alt={displayName}
+                                            className="h-full w-full object-cover"
+                                        />
+                                    ) : (
+                                        displayName[0].toUpperCase()
+                                    )}
                                 </div>
-                                <div className="hidden lg:block">
-                                    <p className="text-sm font-medium text-gray-900">{displayName}</p>
+                                <div className="hidden lg:block text-left">
+                                    <p className="text-sm font-medium text-gray-900 group-hover/user:text-indigo-600 transition-colors">{displayName}</p>
                                     <p className="text-xs text-gray-500">{session.email}</p>
                                 </div>
-                            </div>
+                            </Link>
 
                             {/* Logout Button */}
                             <form action={logout}>

@@ -85,7 +85,7 @@ export default async function ProjectsPage({
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900">Projects</h1>
                     <p className="mt-2 text-gray-600">Manage website projects and track their progress</p>
@@ -95,7 +95,7 @@ export default async function ProjectsPage({
                 {!isAdmin && (
                     <Link
                         href="/projects/new"
-                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg font-medium"
+                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg font-medium w-full md:w-auto justify-center"
                     >
                         <Plus className="h-5 w-5" />
                         New Project

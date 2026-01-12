@@ -81,9 +81,18 @@ export async function updateNote(formData: FormData) {
 
     const supabase = createClient()
 
-    // check validation status first
-    const { data: note } = await supabase.from('project_notes').select('validated_at').eq('id', noteId).single()
-    if (note?.validated_at) {
+    // check validation status and ownership first
+    const { data: note } = await supabase.from('project_notes').select('validated_at, author_id').eq('id', noteId).single()
+
+    if (!note) return { error: 'Note not found' }
+
+    // Strict ownership check: Only author can edit
+    const session = await getSession()
+    if (!session || note.author_id !== session.id) {
+        return { error: 'Unauthorized: You can only edit your own notes.' }
+    }
+
+    if (note.validated_at) {
         return { error: 'Ce journal est validé et ne peut plus être modifié.' }
     }
 
@@ -112,9 +121,18 @@ export async function deleteNote(formData: FormData) {
 
     const supabase = createClient()
 
-    // check validation status first
-    const { data: note } = await supabase.from('project_notes').select('validated_at').eq('id', noteId).single()
-    if (note?.validated_at) {
+    // check validation status and ownership first
+    const { data: note } = await supabase.from('project_notes').select('validated_at, author_id').eq('id', noteId).single()
+
+    if (!note) return { error: 'Note not found' }
+
+    // Strict ownership check: Only author can delete
+    const session = await getSession()
+    if (!session || note.author_id !== session.id) {
+        return { error: 'Unauthorized: You can only delete your own notes.' }
+    }
+
+    if (note.validated_at) {
         return { error: 'Ce journal est validé et ne peut plus être supprimé.' }
     }
 

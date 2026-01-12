@@ -148,7 +148,7 @@ export default function JournalBadge({ initialCount, userId, ownedProjectIds }: 
 
             {/* Dropdown Menu */}
             {isOpen && (
-                <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl shadow-indigo-900/10 border border-gray-100 overflow-hidden z-[100] animate-in slide-in-from-top-2 duration-200">
+                <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] md:w-80 bg-white rounded-2xl shadow-xl shadow-indigo-900/10 border border-gray-100 overflow-hidden z-[100] animate-in slide-in-from-top-2 duration-200">
                     <div className="p-4 border-b border-gray-50 bg-gray-50/50 flex justify-between items-center">
                         <h3 className="font-bold text-gray-900 text-xs uppercase tracking-widest">Notifications</h3>
                         <span className="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded-full">{count} Pending</span>

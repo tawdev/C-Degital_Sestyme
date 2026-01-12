@@ -48,7 +48,10 @@ BEGIN
     SET 
         progress = new_progress,
         status = new_status,
-        end_date = CASE WHEN new_progress = 100 THEN NOW() ELSE end_date END
+        end_date = CASE 
+            WHEN new_progress = 100 THEN CURRENT_DATE 
+            ELSE NULL 
+        END
     WHERE id = project_id_target;
 
     RETURN NULL; -- Triggers fired AFTER don't need to return a row

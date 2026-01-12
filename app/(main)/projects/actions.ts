@@ -41,8 +41,11 @@ export async function createProject(formData: FormData) {
         if (data.progress === 100) {
             data.status = 'completed'
             data.end_date = new Date().toISOString().split('T')[0]
-        } else if (data.progress > 0) {
-            data.status = 'in_progress'
+        } else {
+            data.end_date = null
+            if (data.progress > 0) {
+                data.status = 'in_progress'
+            }
         }
     }
 
@@ -122,8 +125,11 @@ export async function updateProject(formData: FormData) {
         if (data.progress === 100) {
             data.status = 'completed'
             data.end_date = new Date().toISOString().split('T')[0]
-        } else if (data.progress > 0) {
-            data.status = 'in_progress'
+        } else {
+            data.end_date = null
+            if (data.progress > 0) {
+                data.status = 'in_progress'
+            }
         }
     }
 

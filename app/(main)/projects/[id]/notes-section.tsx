@@ -45,7 +45,7 @@ export default function NotesSection({
     return (
         <div className="bg-white rounded-3xl shadow-xl shadow-indigo-900/5 border border-gray-100 overflow-hidden pb-8">
             {/* Header */}
-            <div className="bg-gray-50/50 px-8 py-6 border-b border-gray-100 flex items-center justify-between">
+            <div className="bg-gray-50/50 px-4 md:px-8 py-6 border-b border-gray-100 flex items-center justify-between">
                 <div className="flex items-center gap-4">
                     <div className="p-2.5 bg-indigo-100/50 rounded-xl text-indigo-600">
                         <MessageSquare className="h-6 w-6" />
@@ -70,7 +70,7 @@ export default function NotesSection({
             </div>
 
             {/* Content */}
-            <div className="px-8 pt-8 space-y-6">
+            <div className="px-4 md:px-8 pt-6 md:pt-8 space-y-6">
                 {/* Add Note Form */}
                 {isAddingNote && (
                     <form

@@ -242,7 +242,7 @@ export default function ProjectForm({ employees, project, currentUserId }: { emp
                         {project && (
                             <div className="space-y-2">
                                 <label htmlFor="progress" className="block text-sm font-bold text-gray-700">
-                                    Progression (%) {tasks.length > 0 && <span className="text-[10px] text-indigo-500 ml-1">(Calculé via tâches)</span>}
+                                    Progression (100%) (Calculé via tâches)
                                 </label>
                                 <div className="relative group">
                                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -295,8 +295,7 @@ export default function ProjectForm({ employees, project, currentUserId }: { emp
 
                         <div className="space-y-2">
                             <label className="block text-sm font-bold text-gray-700">
-                                Date de Fin
-                                <span className="text-[10px] text-indigo-500 ml-1 font-normal">(Auto)</span>
+                                Date de Fin (Auto)
                             </label>
                             <div className="relative group">
                                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
