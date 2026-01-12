@@ -1,7 +1,7 @@
 'use client'
 
 import { updateEmployee } from '../actions'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Eye, EyeOff, Save, ArrowLeft, ShieldCheck, Mail, Briefcase } from 'lucide-react'
 
@@ -10,6 +10,10 @@ export default function EditEmployeeForm({ employee }: { employee: any }) {
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState(false)
     const [showPassword, setShowPassword] = useState(false)
+    const [mounted, setMounted] = useState(false)
+    useEffect(() => {
+        setMounted(true)
+    }, [])
 
     async function handleSubmit(formData: FormData) {
         setLoading(true)
@@ -21,9 +25,13 @@ export default function EditEmployeeForm({ employee }: { employee: any }) {
             if (res?.error) {
                 setError(res.error)
                 setLoading(false)
-            } else {
+            } else if (res?.success) {
                 setSuccess(true)
                 setLoading(false)
+                // Small delay to show success message before redirecting
+                setTimeout(() => {
+                    window.location.href = '/employees'
+                }, 1500)
             }
         } catch (err) {
             setError("An unexpected error occurred.")
@@ -157,7 +165,9 @@ export default function EditEmployeeForm({ employee }: { employee: any }) {
                 </div>
 
                 <div className="px-8 py-6 bg-gray-50/50 border-t border-gray-100 flex items-center justify-between">
-                    <p className="text-xs text-gray-400 italic">Dernière modification : {new Date().toLocaleDateString()}</p>
+                    <p className="text-xs text-gray-400 italic">
+                        Dernière modification : {mounted ? new Date().toLocaleDateString() : '...'}
+                    </p>
                     <div className="flex gap-4">
                         <Link
                             href="/employees"

@@ -5,6 +5,7 @@ import { deleteEmployee } from './actions'
 import { getSession } from '@/app/auth/actions'
 import { redirect } from 'next/navigation'
 import EmployeeAvatar from '@/components/employee-avatar'
+import DebugUserPanel from './debug-panel'
 
 interface Employee {
     id: string
@@ -238,6 +239,7 @@ export default async function EmployeesPage() {
                     )}
                 </div>
             </div>
+            <DebugUserPanel />
         </div>
     )
 }

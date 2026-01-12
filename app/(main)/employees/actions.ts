@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function createEmployee(formData: FormData) {
     const email = formData.get('email') as string
@@ -55,108 +56,114 @@ export async function createEmployee(formData: FormData) {
     redirect('/employees')
 }
 
-import { createAdminClient } from '@/lib/supabase/admin'
-
 export async function updateEmployee(formData: FormData) {
-    let id = formData.get('id') as string // Use let because we might update it
+    const id = formData.get('id') as string
     const password = formData.get('password') as string
     const email = formData.get('email') as string
     const fullName = formData.get('full_name') as string
+    const role = formData.get('role') as string
 
-    const data: any = {
-        full_name: fullName,
-        role: formData.get('role') as string,
-        email: email,
-    }
+    console.log(`[updateEmployee] Starting update for employee ${id} (${email})`)
 
-    // Only update password if provided
-    if (password && password.trim() !== '') {
-        try {
-            const adminClient = createAdminClient()
-            let { error: authError } = await adminClient.auth.admin.updateUserById(id, {
-                password: password.trim()
-            })
+    try {
+        const adminClient = createAdminClient()
 
-            // If user doesn't exist in Auth (legacy user), try to create them
-            if (authError && (authError.message.includes('User not found') || authError.status === 404)) {
-                console.log('User not found in Auth by ID, checking if email exists...')
+        // 1. Fetch current record to handle email changes
+        const { data: currentEmp, error: fetchError } = await adminClient
+            .from('employees')
+            .select('*')
+            .eq('id', id)
+            .single()
 
-                // First, check if a user with this email already exists in Auth
-                const { data: listData, error: listError } = await adminClient.auth.admin.listUsers()
-                const existingAuthUser = listData?.users.find(u => u.email?.toLowerCase() === email.toLowerCase())
+        if (fetchError || !currentEmp) {
+            console.error('[updateEmployee] Fetch error:', fetchError)
+            return { error: 'Employee not found in database.' }
+        }
 
-                if (existingAuthUser) {
-                    console.log(`Syncing existing Auth user (${existingAuthUser.id}) for email ${email}`)
+        // 2. Prepare Auth data
+        const authUpdate: any = {
+            email: email,
+            user_metadata: { full_name: fullName },
+            email_confirm: true
+        }
+        if (password && password.trim() !== '') {
+            authUpdate.password = password.trim()
+            console.log('[updateEmployee] Password update requested')
+        }
 
-                    if (existingAuthUser.id !== id) {
-                        const { error: idUpdateError } = await adminClient.from('employees')
-                            .update({ id: existingAuthUser.id })
-                            .eq('id', id)
+        // 3. Try updating Auth by ID
+        let targetAuthId = id
+        let { error: authError } = await adminClient.auth.admin.updateUserById(id, authUpdate)
 
-                        if (idUpdateError) {
-                            console.error('ID Sync Error:', idUpdateError)
-                            return { error: `Found existing Auth account but failed to sync Database ID. Please run the sync migration. Error: ${idUpdateError.message}` }
-                        }
-                        id = existingAuthUser.id
-                    }
+        if (authError && (authError.status === 404 || authError.message.toLowerCase().includes('not found'))) {
+            console.log('[updateEmployee] ID mismatch or user shifted in Auth. Searching by current email:', currentEmp.email)
 
-                    // Now update the password for the correct ID
-                    const { error: secondAuthError } = await adminClient.auth.admin.updateUserById(id, {
-                        password: password.trim()
-                    })
+            // Search by CURRENT email (the one already in Auth)
+            const { data: listData } = await adminClient.auth.admin.listUsers()
+            const existingAuth = listData?.users.find((u: any) => u.email?.toLowerCase() === currentEmp.email.toLowerCase())
 
-                    if (secondAuthError) {
-                        return { error: `Synced ID but failed to update password: ${secondAuthError.message}` }
-                    }
-                } else {
-                    // No user found in Auth by ID or Email, create one
-                    console.log('No user found in Auth by ID or Email, creating new account...')
-                    const { data: authData, error: createError } = await adminClient.auth.admin.createUser({
-                        email: email,
-                        password: password.trim(),
-                        email_confirm: true,
-                        user_metadata: { full_name: fullName }
-                    })
+            if (existingAuth) {
+                console.log(`[updateEmployee] Found Auth user with matching email. Actual Auth ID: ${existingAuth.id}`)
+                targetAuthId = existingAuth.id
 
-                    if (createError) {
-                        return { error: `Auth Sync Error: ${createError.message}` }
-                    }
+                // Update the correct Auth account
+                const { error: secondAuthError } = await adminClient.auth.admin.updateUserById(targetAuthId, authUpdate)
+                if (secondAuthError) {
+                    console.error('[updateEmployee] Second auth update failed:', secondAuthError)
+                    return { error: `Auth sync failed: ${secondAuthError.message}` }
+                }
 
-                    if (authData.user) {
-                        const { error: idUpdateError } = await adminClient.from('employees')
-                            .update({ id: authData.user.id })
-                            .eq('id', id)
+                // Try to sync IDs in DB if different
+                if (targetAuthId !== id) {
+                    console.log(`[updateEmployee] Attempting to sync DB ID ${id} -> ${targetAuthId}`)
+                    const { error: idSyncError } = await adminClient
+                        .from('employees')
+                        .update({ id: targetAuthId })
+                        .eq('id', id)
 
-                        if (idUpdateError) {
-                            // Try to cleanup if possible, but the ID update is the blocker
-                            console.error('ID Sync Error (New User):', idUpdateError)
-                            return { error: `Account created in Auth, but could not sync Database ID. Error: ${idUpdateError.message}` }
-                        }
-                        id = authData.user.id
+                    if (idSyncError) {
+                        console.error('[updateEmployee] ID Sync failed (likely FK constraints):', idSyncError.message)
+                        // We continue with the old ID for DB updates to avoid breaking the UI
+                    } else {
+                        console.log('[updateEmployee] ID Sync successful')
+                        // Proceed using the new ID for the final update if needed, but the update above already changed it.
+                        // However, the eq('id', id) below would fail if we don't update our 'id' variable.
                     }
                 }
-            } else if (authError) {
-                console.error('Auth update error:', authError)
-                return { error: `Auth Error: ${authError.message}` }
+            } else {
+                return { error: 'Associated authentication account not found. Please contact support.' }
             }
-
-            // Keep a record in the employees table for reference
-            data.password = 'hashed_by_supabase_auth'
-        } catch (err: any) {
-            console.error('Admin client error:', err.message)
-            return { error: 'System error. Check if SUPABASE_SERVICE_ROLE_KEY is set.' }
+        } else if (authError) {
+            console.error('[updateEmployee] Auth update error:', authError)
+            return { error: `Auth Error: ${authError.message}` }
         }
+
+        // 4. Update Database
+        const dbUpdate = {
+            full_name: fullName,
+            role: role,
+            email: email,
+            password: 'hashed_by_supabase_auth'
+        }
+
+        const { error: dbError } = await adminClient
+            .from('employees')
+            .update(dbUpdate)
+            .or(`id.eq.${id},id.eq.${targetAuthId}`) // Try both in case sync happened
+
+        if (dbError) {
+            console.error('[updateEmployee] Database update error:', dbError)
+            return { error: dbError.message }
+        }
+
+        console.log('[updateEmployee] Update completed successfully')
+        revalidatePath('/employees')
+        return { success: true }
+
+    } catch (err: any) {
+        console.error('[updateEmployee] Unexpected error:', err)
+        return { error: 'A system error occurred during the update.' }
     }
-
-    const adminClient = createAdminClient()
-    const { error } = await adminClient.from('employees').update(data).eq('id', id)
-
-    if (error) {
-        return { error: error.message }
-    }
-
-    revalidatePath('/employees')
-    redirect('/employees')
 }
 
 export async function deleteEmployee(formData: FormData) {

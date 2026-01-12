@@ -24,6 +24,8 @@ export default function CallOverlay({
 }: CallOverlayProps) {
     const localVideoRef = useRef<HTMLVideoElement>(null)
     const remoteVideoRef = useRef<HTMLVideoElement>(null)
+    const remoteAudioRef = useRef<HTMLAudioElement>(null)
+    const [duration, setDuration] = React.useState(0)
 
     useEffect(() => {
         if (localVideoRef.current && localStream) {
@@ -35,7 +37,30 @@ export default function CallOverlay({
         if (remoteVideoRef.current && remoteStream) {
             remoteVideoRef.current.srcObject = remoteStream
         }
+        if (remoteAudioRef.current && remoteStream) {
+            remoteAudioRef.current.srcObject = remoteStream
+        }
     }, [remoteStream])
+
+    // Timer Logic
+    useEffect(() => {
+        let interval: any
+        if (state.status === 'connected') {
+            interval = setInterval(() => {
+                setDuration(prev => prev + 1)
+            }, 1000)
+        } else {
+            setDuration(0)
+            clearInterval(interval)
+        }
+        return () => clearInterval(interval)
+    }, [state.status])
+
+    const formatDuration = (seconds: number) => {
+        const mins = Math.floor(seconds / 60)
+        const secs = seconds % 60
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+    }
 
     const isRinging = state.isIncoming && state.status === 'ringing'
     const isCalling = !state.isIncoming && state.status === 'calling'
@@ -88,7 +113,8 @@ export default function CallOverlay({
                                     autoPlay
                                     muted
                                     playsInline
-                                    className="w-full h-full object-cover mirror"
+                                    style={{ transform: 'scaleX(-1)' }}
+                                    className="w-full h-full object-cover"
                                 />
                             )}
                         </div>
@@ -143,15 +169,14 @@ export default function CallOverlay({
                 {/* Status Indicator */}
                 <div className="absolute top-6 left-6 flex items-center gap-2 px-4 py-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10">
                     <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}></div>
-                    <span className="text-[10px] font-bold text-white uppercase tracking-wider">{state.status}</span>
+                    <span className="text-[10px] font-bold text-white uppercase tracking-wider">
+                        {isConnected ? formatDuration(duration) : state.status}
+                    </span>
                 </div>
-            </div>
 
-            <style jsx>{`
-                .mirror {
-                    transform: scaleX(-1);
-                }
-            `}</style>
+                {/* Hidden Audio for Remote Stream (Covers Audio-only and Video calls) */}
+                <audio ref={remoteAudioRef} autoPlay playsInline />
+            </div>
         </div>
     )
 }
