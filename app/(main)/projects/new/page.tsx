@@ -21,6 +21,10 @@ export default async function NewProjectPage() {
         .eq('id', session.id)
         .single()
 
+    if (currentUser?.role === 'Administrator') {
+        redirect('/projects')
+    }
+
     // Fetch employees for assignment (Everyone can assign collaborators)
     const { data } = await supabase.from('employees').select('id, full_name, role').order('full_name')
     const employees = data || []

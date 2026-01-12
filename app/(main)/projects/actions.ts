@@ -4,10 +4,19 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { getSession } from '@/app/auth/actions'
 
 export async function createProject(formData: FormData) {
     const supabase = createClient()
     const adminClient = createAdminClient()
+
+    const session = await getSession()
+    if (!session) return { error: 'Unauthorized' }
+
+    const { data: user } = await supabase.from('employees').select('role').eq('id', session.id).single()
+    if (user?.role === 'Administrator') {
+        return { error: 'Unauthorized: Administrators cannot create projects.' }
+    }
 
     const data = {
         project_name: formData.get('project_name') as string,
@@ -81,6 +90,14 @@ export async function updateProject(formData: FormData) {
     const supabase = createClient()
     const adminClient = createAdminClient()
     const id = formData.get('id') as string
+
+    const session = await getSession()
+    if (!session) return { error: 'Unauthorized' }
+
+    const { data: user } = await supabase.from('employees').select('role').eq('id', session.id).single()
+    if (user?.role === 'Administrator') {
+        return { error: 'Unauthorized: Administrators cannot update projects.' }
+    }
 
     const data = {
         project_name: formData.get('project_name') as string,
@@ -157,8 +174,17 @@ export async function updateProject(formData: FormData) {
 }
 
 export async function deleteProject(formData: FormData) {
+    const supabase = createClient()
     const adminClient = createAdminClient()
     const id = formData.get('id') as string
+
+    const session = await getSession()
+    if (!session) return
+
+    const { data: user } = await supabase.from('employees').select('role').eq('id', session.id).single()
+    if (user?.role === 'Administrator') {
+        return
+    }
 
     const { error } = await adminClient.from('projects').delete().eq('id', id)
 

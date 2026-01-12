@@ -160,12 +160,8 @@ export default function NotesSection({
                                                     </span>
                                                 ) : (
                                                     <div className="flex gap-1">
-                                                        {(isProjectOwner || isAdmin) && (
-                                                            <form action={async (formData) => {
-                                                                if (confirm('Clôturer le Journal ?\nLa validation verrouille le journal de bord et confirme l\'état actuel.')) {
-                                                                    await validateNote(formData)
-                                                                }
-                                                            }}>
+                                                        {isProjectOwner && (
+                                                            <form action={validateNote}>
                                                                 <input type="hidden" name="note_id" value={note.id} />
                                                                 <input type="hidden" name="project_id" value={projectId} />
                                                                 <button

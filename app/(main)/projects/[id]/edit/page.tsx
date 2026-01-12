@@ -32,9 +32,8 @@ export default async function EditProjectPage({ params }: { params: { id: string
         .eq('id', session.id)
         .single()
 
-    // Authorization: Only owner or admin can edit
-    // (Note: The projects page already filters this, but just in case)
-    if (currentUser?.role !== 'Administrator' && project.employee_id !== session.id) {
+    // Authorization: Only owner can edit. Admins are explicitly blocked (Read-only).
+    if (currentUser?.role === 'Administrator' || project.employee_id !== session.id) {
         redirect('/projects')
     }
 

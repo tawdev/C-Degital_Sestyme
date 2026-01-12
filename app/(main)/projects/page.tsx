@@ -91,13 +91,16 @@ export default async function ProjectsPage({
                     <p className="mt-2 text-gray-600">Manage website projects and track their progress</p>
                 </div>
                 {/* Allow both Employees and Admins to create projects */}
-                <Link
-                    href="/projects/new"
-                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg font-medium"
-                >
-                    <Plus className="h-5 w-5" />
-                    New Project
-                </Link>
+                {/* Allow only Employees (not Admins) to create projects */}
+                {!isAdmin && (
+                    <Link
+                        href="/projects/new"
+                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg font-medium"
+                    >
+                        <Plus className="h-5 w-5" />
+                        New Project
+                    </Link>
+                )}
             </div>
 
             {/* Stats */}
@@ -281,8 +284,8 @@ export default async function ProjectsPage({
 
                                                 </Link>
 
-                                                {/* Edit/Delete buttons - Admin can do everything, Employee only for own projects */}
-                                                {(isAdmin || project.employee_id === currentUserId) && (
+                                                {/* Edit/Delete buttons -  Disabled for Admin (Read-only), Employee only for own projects */}
+                                                {!isAdmin && project.employee_id === currentUserId && (
                                                     <>
                                                         <Link
                                                             href={`/projects/${project.id}/edit`}
@@ -315,14 +318,16 @@ export default async function ProjectsPage({
                     {projects.length === 0 && (
                         <div className="text-center py-12">
                             <Activity className="h-12 w-12 mx-auto text-gray-300 mb-3" />
-                            <p className="text-gray-500 text-sm">No projects found. Create your first project to get started.</p>
-                            <Link
-                                href="/projects/new"
-                                className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
-                            >
-                                <Plus className="h-4 w-4" />
-                                New Project
-                            </Link>
+                            <p className="text-gray-500 text-sm">No projects found. {!isAdmin && "Create your first project to get started."}</p>
+                            {!isAdmin && (
+                                <Link
+                                    href="/projects/new"
+                                    className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+                                >
+                                    <Plus className="h-4 w-4" />
+                                    New Project
+                                </Link>
+                            )}
                         </div>
                     )}
                 </div>

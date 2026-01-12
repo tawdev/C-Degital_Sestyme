@@ -156,9 +156,8 @@ export async function validateNote(formData: FormData) {
 
     const currentUser = await supabase.from('employees').select('role').eq('id', session.id).single()
     const isOwner = project?.employee_id === session.id
-    const isAdmin = currentUser.data?.role === 'Administrator'
 
-    if (!isOwner && !isAdmin) {
+    if (!isOwner) {
         return { error: 'Seul le responsable du projet peut valider ce journal.' }
     }
 
