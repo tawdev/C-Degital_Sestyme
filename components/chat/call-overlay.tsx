@@ -98,8 +98,9 @@ export default function CallOverlay({
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
     }
 
+    const participant = state.isIncoming ? state.caller : state.recipient
     const isRinging = state.isIncoming && state.status === 'ringing'
-    const isCalling = !state.isIncoming && state.status === 'calling'
+    const isConnecting = state.status === 'calling'
     const isConnected = state.status === 'connected'
 
     return (
@@ -113,15 +114,14 @@ export default function CallOverlay({
                             ref={remoteVideoRef}
                             autoPlay
                             playsInline
-                            onLoadedMetadata={() => console.log('[CallOverlay] Remote video metadata loaded')}
                             className="w-full h-full object-cover"
                         />
                     ) : (
                         <div className="flex flex-col items-center gap-6 animate-pulse">
                             <div className="relative">
                                 <EmployeeAvatar
-                                    avatarUrl={state.caller?.avatar || null}
-                                    fullName={state.caller?.name || 'User'}
+                                    avatarUrl={participant?.avatar || null}
+                                    fullName={participant?.name || 'User'}
                                     className="w-32 h-32 text-4xl border-4 border-indigo-500/30"
                                 />
                                 <div className="absolute -bottom-2 -right-2 bg-indigo-600 p-2 rounded-full shadow-lg">
@@ -129,9 +129,11 @@ export default function CallOverlay({
                                 </div>
                             </div>
                             <div className="text-center">
-                                <h2 className="text-2xl font-bold text-white mb-2">{state.caller?.name || 'Connecting...'}</h2>
+                                <h2 className="text-2xl font-bold text-white mb-2">{participant?.name || 'Connecting...'}</h2>
                                 <p className="text-indigo-400 font-medium">
-                                    {isRinging ? 'Incoming Call...' : isCalling ? 'Calling...' : isConnected ? 'Connected' : 'Ending...'}
+                                    {isRinging ? 'Incoming Call...' :
+                                        isConnecting ? 'Establishing secure connection...' :
+                                            isConnected ? 'Secure connection active' : 'Ending...'}
                                 </p>
                             </div>
                         </div>
