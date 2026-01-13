@@ -158,6 +158,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                     stream.addTrack(event.track)
                     console.log(`[CallManager] Added ${event.track.kind} track to remote stream`)
                 }
+                // Force a new MediaStream object to trigger React update
                 return new MediaStream(stream.getTracks())
             })
 
@@ -197,8 +198,14 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
 
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: type === 'video',
-                audio: true
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
             })
+
+            console.log('[CallManager] Local stream tracks:', stream.getTracks().map(t => t.kind))
             localStreamRef.current = stream
             setLocalStream(stream)
 
@@ -217,7 +224,10 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
             })
 
             const pc = setupPeerConnection(recipientId)
-            stream.getTracks().forEach(track => pc.addTrack(track, stream))
+            stream.getTracks().forEach(track => {
+                console.log(`[CallManager] Adding local ${track.kind} track to PC`)
+                pc.addTrack(track, stream)
+            })
 
         } catch (err) {
             console.error('[CallManager] Failed to start call:', err)
@@ -288,7 +298,6 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                 console.error('[CallManager] Error adding ice candidate', e)
             }
         } else {
-            console.log('[CallManager] Queuing ICE candidate')
             pendingCandidates.current.push(payload.candidate)
         }
     }
@@ -300,8 +309,14 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
             console.log('[CallManager] Accepting call...')
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: callState.type === 'video',
-                audio: true
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
             })
+
+            console.log('[CallManager] Local stream tracks (Accept):', stream.getTracks().map(t => t.kind))
             localStreamRef.current = stream
             setLocalStream(stream)
 
