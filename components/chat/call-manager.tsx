@@ -65,8 +65,13 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
     }
 
     const broadcastSignal = (signal: string, from: string, to: string, payload: any = {}) => {
+        if (!channelRef.current) {
+            console.error(`[CallManager] Cannot send ${signal}: Channel not initialized`)
+            return
+        }
+
         console.log(`[CallManager] Sending ${signal} signal to ${to}`)
-        channelRef.current?.send({
+        channelRef.current.send({
             type: 'broadcast',
             event: 'call-signal',
             payload: { signal, from, to, ...payload }
@@ -84,6 +89,11 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         return () => clearInterval(interval)
     }, [])
 
+    const statusRef = useRef(callState.status)
+    useEffect(() => {
+        statusRef.current = callState.status
+    }, [callState.status])
+
     useEffect(() => {
         console.log('[CallManager] Initializing signaling for User ID:', currentUser.id)
 
@@ -96,7 +106,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                 const { signal, from, to, type, metadata } = payload
                 if (to !== currentUser.id) return
 
-                console.log(`[CallManager] Received ${signal} from ${from}`)
+                console.log(`[CallManager] Received ${signal} from ${from} (Current Status: ${statusRef.current})`)
 
                 switch (signal) {
                     case 'initiate':
@@ -117,10 +127,10 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                         break
 
                     case 'accept':
-                        // Only caller receives 'accept'
-                        if (callState.status === 'calling') {
+                        // Use statusRef to avoid re-triggering effect
+                        if (statusRef.current === 'calling') {
                             console.log('[CallManager] Remote accepted the call')
-                            // Negotiation will be handled by onnegotiationneeded once we have tracks
+                            // Perfect negotiation will handle offer creation via onnegotiationneeded
                         }
                         break
 
@@ -150,9 +160,10 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         channelRef.current = channel
 
         return () => {
+            console.log('[CallManager] Cleaning up signaling channel')
             supabase.removeChannel(channel)
         }
-    }, [currentUser.id, callState.status])
+    }, [currentUser.id]) // Decoupled from callState.status
 
     const setupPeerConnection = (otherUserId: string, polite: boolean) => {
         if (peerConnection.current) {
