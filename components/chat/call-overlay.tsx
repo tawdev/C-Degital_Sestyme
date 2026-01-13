@@ -27,12 +27,21 @@ export default function CallOverlay({
     const remoteAudioRef = useRef<HTMLAudioElement>(null)
     const [duration, setDuration] = React.useState(0)
 
+    const lastLocalStream = useRef<string>('')
+    const lastRemoteStream = useRef<string>('')
+
     useEffect(() => {
         const video = localVideoRef.current
         if (video && localStream) {
-            console.log('[CallOverlay] Attaching local stream')
-            video.srcObject = localStream
-            video.play().catch(err => console.error('[CallOverlay] Local video play error:', err))
+            const streamId = localStream.id + localStream.getTracks().map(t => t.id).join(',')
+            if (lastLocalStream.current !== streamId) {
+                console.log('[CallOverlay] Attaching local stream')
+                video.srcObject = localStream
+                video.play().catch(err => {
+                    if (err.name !== 'AbortError') console.error('[CallOverlay] Local video play error:', err)
+                })
+                lastLocalStream.current = streamId
+            }
         }
     }, [localStream])
 
@@ -41,16 +50,30 @@ export default function CallOverlay({
         const audio = remoteAudioRef.current
 
         if (remoteStream) {
-            console.log(`[CallOverlay] Attaching remote stream. Tracks: ${remoteStream.getTracks().length}`)
+            const streamId = remoteStream.id + remoteStream.getTracks().map(t => t.id).join(',')
+            if (lastRemoteStream.current !== streamId) {
+                const hasAudio = remoteStream.getAudioTracks().length > 0
+                const hasVideo = remoteStream.getVideoTracks().length > 0
+                console.log(`[CallOverlay] Attaching remote stream: Video=${hasVideo}, Audio=${hasAudio}`)
 
-            if (video && state.type === 'video') {
-                video.srcObject = remoteStream
-                video.play().catch(err => console.error('[CallOverlay] Remote video play error:', err))
-            }
+                if (video && state.type === 'video' && hasVideo) {
+                    video.srcObject = remoteStream
+                    video.muted = false
+                    video.volume = 1.0
+                    video.play().catch(err => {
+                        if (err.name !== 'AbortError') console.error('[CallOverlay] Remote video play error:', err)
+                    })
+                }
 
-            if (audio) {
-                audio.srcObject = remoteStream
-                audio.play().catch(err => console.error('[CallOverlay] Remote audio play error:', err))
+                if (audio && hasAudio) {
+                    audio.srcObject = remoteStream
+                    audio.muted = false
+                    audio.volume = 1.0
+                    audio.play().catch(err => {
+                        if (err.name !== 'AbortError') console.error('[CallOverlay] Remote audio play error:', err)
+                    })
+                }
+                lastRemoteStream.current = streamId
             }
         }
     }, [remoteStream, state.type])

@@ -49,6 +49,12 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
     const pendingCandidates = useRef<RTCIceCandidateInit[]>([])
     const channelRef = useRef<any>(null)
 
+    // Perfect Negotiation Refs
+    const makingOffer = useRef(false)
+    const ignoreOffer = useRef(false)
+    const isSettingRemoteAnswerPending = useRef(false)
+    const isPolite = useRef(false) // Receiver is polite, Caller is impolite
+
     const configuration: RTCConfiguration = {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
@@ -59,7 +65,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
     }
 
     const broadcastSignal = (signal: string, from: string, to: string, payload: any = {}) => {
-        console.log(`[CallManager] Signal: ${signal} -> ${to}`)
+        console.log(`[CallManager] Sending ${signal} signal to ${to}`)
         channelRef.current?.send({
             type: 'broadcast',
             event: 'call-signal',
@@ -68,16 +74,26 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
     }
 
     useEffect(() => {
+        const interval = setInterval(async () => {
+            const { data } = await supabase.auth.getSession()
+            if (!data.session) {
+                console.warn('[CallManager] Session expired or invalid')
+            }
+        }, 300000) // 5 minutes
+
+        return () => clearInterval(interval)
+    }, [])
+
+    useEffect(() => {
         console.log('[CallManager] Initializing signaling for User ID:', currentUser.id)
 
-        const channel = supabase.channel('calls_v1', {
+        const channel = supabase.channel('calls_v2', {
             config: {
                 broadcast: { ack: true }
             }
         })
             .on('broadcast', { event: 'call-signal' }, async ({ payload }) => {
                 const { signal, from, to, type, metadata } = payload
-
                 if (to !== currentUser.id) return
 
                 console.log(`[CallManager] Received ${signal} from ${from}`)
@@ -101,14 +117,11 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                         break
 
                     case 'accept':
-                        setCallState(prev => {
-                            if (prev.status === 'calling') {
-                                console.log('[CallManager] Remote accepted, sending offer')
-                                sendOffer(from)
-                                return prev
-                            }
-                            return prev
-                        })
+                        // Only caller receives 'accept'
+                        if (callState.status === 'calling') {
+                            console.log('[CallManager] Remote accepted the call')
+                            // Negotiation will be handled by onnegotiationneeded once we have tracks
+                        }
                         break
 
                     case 'offer':
@@ -130,27 +143,35 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                         break
                 }
             })
-            .subscribe()
+            .subscribe((status) => {
+                console.log('[CallManager] Signaling channel status:', status)
+            })
 
         channelRef.current = channel
 
         return () => {
             supabase.removeChannel(channel)
         }
-    }, [currentUser.id])
+    }, [currentUser.id, callState.status])
 
-    const setupPeerConnection = (otherUserId: string) => {
-        console.log('[CallManager] Setting up RTCPeerConnection for:', otherUserId)
+    const setupPeerConnection = (otherUserId: string, polite: boolean) => {
+        if (peerConnection.current) {
+            console.log('[CallManager] Closing existing PeerConnection')
+            peerConnection.current.close()
+        }
+
+        console.log(`[CallManager] Setting up PC for ${otherUserId} (Polite: ${polite})`)
         const pc = new RTCPeerConnection(configuration)
+        isPolite.current = polite
 
-        pc.onicecandidate = (event) => {
-            if (event.candidate) {
-                broadcastSignal('ice-candidate', currentUser.id, otherUserId, { candidate: event.candidate })
+        pc.onicecandidate = ({ candidate }) => {
+            if (candidate) {
+                broadcastSignal('ice-candidate', currentUser.id, otherUserId, { candidate })
             }
         }
 
         pc.ontrack = (event) => {
-            console.log(`[CallManager] Remote ${event.track.kind} track received`)
+            console.log(`[CallManager] Remote ${event.track.kind} track received: ${event.track.id}`)
 
             setRemoteStream(prev => {
                 const stream = prev || new MediaStream()
@@ -158,7 +179,6 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                     stream.addTrack(event.track)
                     console.log(`[CallManager] Added ${event.track.kind} track to remote stream`)
                 }
-                // Force a new MediaStream object to trigger React update
                 return new MediaStream(stream.getTracks())
             })
 
@@ -167,16 +187,26 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
             }
         }
 
+        pc.onnegotiationneeded = async () => {
+            try {
+                makingOffer.current = true
+                console.log('[CallManager] Creating offer...')
+                const offer = await pc.createOffer()
+                if (pc.signalingState !== 'stable') return
+
+                await pc.setLocalDescription(offer)
+                broadcastSignal('offer', currentUser.id, otherUserId, { sdp: pc.localDescription })
+            } catch (err) {
+                console.error('[CallManager] Negotiation needed error:', err)
+            } finally {
+                makingOffer.current = false
+            }
+        }
+
         pc.oniceconnectionstatechange = () => {
             console.log('[CallManager] ICE Connection State:', pc.iceConnectionState)
             if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-                setCallState(prev => {
-                    if (prev.status !== 'connected') {
-                        console.log('[CallManager] Call linked and connected!')
-                        return { ...prev, status: 'connected' }
-                    }
-                    return prev
-                })
+                setCallState(prev => prev.status !== 'connected' ? { ...prev, status: 'connected' } : prev)
             }
         }
 
@@ -193,29 +223,19 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
 
     const startCall = async (recipientId: string, recipientName: string, recipientAvatar: string | null, type: 'audio' | 'video') => {
         try {
-            console.log(`[CallManager] Starting ${type} call to:`, recipientId)
+            console.log(`[CallManager] Starting ${type} call to ${recipientId}`)
             cleanupCall()
 
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: type === 'video',
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
-                }
+                audio: { echoCancellation: true, noiseSuppression: true }
             })
 
-            console.log('[CallManager] Local stream tracks:', stream.getTracks().map(t => t.kind))
             localStreamRef.current = stream
             setLocalStream(stream)
 
             setCallState({
-                isActive: true,
-                isIncoming: false,
-                type,
-                caller: null,
-                recipientId,
-                status: 'calling'
+                isActive: true, isIncoming: false, type, caller: null, recipientId, status: 'calling'
             })
 
             broadcastSignal('initiate', currentUser.id, recipientId, {
@@ -223,82 +243,72 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                 metadata: { name: currentUser.full_name, avatar: currentUser.avatar_url }
             })
 
-            const pc = setupPeerConnection(recipientId)
-            stream.getTracks().forEach(track => {
-                console.log(`[CallManager] Adding local ${track.kind} track to PC`)
-                pc.addTrack(track, stream)
-            })
+            const pc = setupPeerConnection(recipientId, false) // Caller is impolite
+            stream.getTracks().forEach(track => pc.addTrack(track, stream))
 
         } catch (err) {
-            console.error('[CallManager] Failed to start call:', err)
+            console.error('[CallManager] Start call failed:', err)
             cleanupCall()
         }
     }
 
-    const sendOffer = async (recipientId: string) => {
+    const handleOffer = async (payload: any) => {
         const pc = peerConnection.current
         if (!pc) return
-        try {
-            const offer = await pc.createOffer()
-            await pc.setLocalDescription(offer)
-            broadcastSignal('offer', currentUser.id, recipientId, { sdp: offer })
-        } catch (err) {
-            console.error('[CallManager] Error sending offer:', err)
-        }
-    }
 
-    const handleOffer = async (payload: any) => {
-        console.log('[CallManager] Handling WebRTC offer')
-        let pc = peerConnection.current
-        if (!pc) {
-            pc = setupPeerConnection(payload.from)
+        const description = new RTCSessionDescription(payload.sdp)
+        const readyForOffer = !makingOffer.current && (pc.signalingState === 'stable' || isSettingRemoteAnswerPending.current)
+        const offerCollision = !readyForOffer
+
+        ignoreOffer.current = !isPolite.current && offerCollision
+        if (ignoreOffer.current) {
+            console.log('[CallManager] Ignoring colliding offer (Impolite)')
+            return
+        }
+
+        try {
+            console.log('[CallManager] Setting remote description (Offer)')
+            await pc.setRemoteDescription(description)
+
+            // Add local tracks if we have any but haven't added them yet
             const stream = localStreamRef.current
             if (stream) {
-                stream.getTracks().forEach(track => pc!.addTrack(track, stream))
-            }
-        }
-
-        try {
-            await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp))
-
-            while (pendingCandidates.current.length > 0) {
-                const candidate = pendingCandidates.current.shift()
-                await pc.addIceCandidate(new RTCIceCandidate(candidate!))
+                stream.getTracks().forEach(track => {
+                    const senders = pc.getSenders()
+                    if (!senders.find(s => s.track?.id === track.id)) {
+                        pc.addTrack(track, stream)
+                    }
+                })
             }
 
             const answer = await pc.createAnswer()
             await pc.setLocalDescription(answer)
-            broadcastSignal('answer', currentUser.id, payload.from, { sdp: answer })
+            broadcastSignal('answer', currentUser.id, payload.from, { sdp: pc.localDescription })
         } catch (err) {
-            console.error('[CallManager] Error handling offer:', err)
+            console.error('[CallManager] Handle offer error:', err)
         }
     }
 
     const handleAnswer = async (payload: any) => {
         const pc = peerConnection.current
-        if (pc) {
-            try {
-                await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp))
-                while (pendingCandidates.current.length > 0) {
-                    const candidate = pendingCandidates.current.shift()
-                    await pc.addIceCandidate(new RTCIceCandidate(candidate!))
-                }
-            } catch (err) {
-                console.error('[CallManager] Error handling answer:', err)
-            }
+        if (!pc) return
+        try {
+            console.log('[CallManager] Setting remote description (Answer)')
+            await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp))
+        } catch (err) {
+            console.error('[CallManager] Handle answer error:', err)
         }
     }
 
     const handleIceCandidate = async (payload: any) => {
         const pc = peerConnection.current
-        if (pc && pc.remoteDescription) {
-            try {
-                await pc.addIceCandidate(new RTCIceCandidate(payload.candidate))
-            } catch (e) {
-                console.error('[CallManager] Error adding ice candidate', e)
+        if (!pc || !payload.candidate) return
+        try {
+            await pc.addIceCandidate(new RTCIceCandidate(payload.candidate))
+        } catch (err) {
+            if (!ignoreOffer.current) {
+                console.error('[CallManager] Handle ICE candidate error:', err)
             }
-        } else {
-            pendingCandidates.current.push(payload.candidate)
         }
     }
 
@@ -309,21 +319,20 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
             console.log('[CallManager] Accepting call...')
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: callState.type === 'video',
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
-                }
+                audio: { echoCancellation: true, noiseSuppression: true }
             })
 
-            console.log('[CallManager] Local stream tracks (Accept):', stream.getTracks().map(t => t.kind))
             localStreamRef.current = stream
             setLocalStream(stream)
+
+            // Setup PC before sending 'accept' to ensure we are ready for the offer
+            const pc = setupPeerConnection(callState.caller.id, true) // Receiver is polite
+            stream.getTracks().forEach(track => pc.addTrack(track, stream))
 
             setCallState(prev => ({ ...prev, status: 'calling' }))
             broadcastSignal('accept', currentUser.id, callState.caller!.id)
         } catch (err) {
-            console.error('[CallManager] Failed to accept call:', err)
+            console.error('[CallManager] Accept call failed:', err)
             rejectCall()
         }
     }
@@ -345,7 +354,6 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
 
     const cleanupCall = () => {
         console.log('[CallManager] Cleaning up call')
-
         if (localStreamRef.current) {
             localStreamRef.current.getTracks().forEach(track => track.stop())
         }
@@ -359,14 +367,12 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         remoteStreamRef.current = null
         peerConnection.current = null
         pendingCandidates.current = []
+        makingOffer.current = false
+        ignoreOffer.current = false
+        isSettingRemoteAnswerPending.current = false
 
         setCallState({
-            isActive: false,
-            isIncoming: false,
-            type: 'video',
-            caller: null,
-            recipientId: null,
-            status: 'idle'
+            isActive: false, isIncoming: false, type: 'video', caller: null, recipientId: null, status: 'idle'
         })
         setIsMuted(false)
         setIsCameraOff(false)
