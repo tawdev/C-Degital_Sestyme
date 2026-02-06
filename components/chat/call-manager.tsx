@@ -91,7 +91,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                 broadcast: { ack: true }
             }
         })
-            .on('broadcast', { event: 'call-signal' }, async ({ payload }) => {
+            .on('broadcast', { event: 'call-signal' }, async ({ payload }: { payload: any }) => {
                 const { signal, from, to, type, metadata } = payload
                 if (to !== currentUser.id) return
 
@@ -150,7 +150,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                         break
                 }
             })
-            .subscribe((status) => {
+            .subscribe((status: any) => {
                 console.log('[CallManager] Signaling channel status:', status)
             })
 

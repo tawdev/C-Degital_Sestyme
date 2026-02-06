@@ -38,7 +38,7 @@ export default function JournalBadge({ initialCount, userId, ownedProjectIds }: 
                     schema: 'public',
                     table: 'project_notes'
                 },
-                (payload) => {
+                (payload: any) => {
                     const event = payload.eventType
                     const newRecord = payload.new as any
                     const oldRecord = payload.old as any

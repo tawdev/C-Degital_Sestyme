@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useRealtime } from '@/context/realtime-context'
 import { ChatMessage, ChatRole } from '@/lib/types/chat'
 import { sendMessage, getMessages, markConversationAsRead, deleteMessage, toggleReaction, getConversationDetails, getGroupMembers, updateMessageStatus, updateAllDelivered } from '@/app/(main)/chat/actions' // Correct path
-import { Send, Loader2, Paperclip, Mic, X, File as FileIcon, Square, CheckCircle2, Download, Trash2, SmilePlus, Users, Settings, Phone, Video as VideoIcon, Check, CheckCheck, Reply } from 'lucide-react'
+import { Send, Loader2, Paperclip, Mic, X, File as FileIcon, Square, CheckCircle2, Download, Trash2, SmilePlus, Users, Settings, Phone, Video as VideoIcon, Check, CheckCheck, Reply, ArrowLeft } from 'lucide-react'
 import EmployeeAvatar from '@/components/employee-avatar'
 import GroupSettingsModal from './group-settings-modal'
 import { useCall } from './call-manager'
@@ -83,7 +83,7 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
             console.log('[ChatWindow] Broadcasting conversation-seen focus for:', conversationId)
             const sb = createClient()
             const syncChannel = sb.channel(`sync-seen-${Date.now()}`)
-            syncChannel.subscribe((status) => {
+            syncChannel.subscribe((status: any) => {
                 if (status === 'SUBSCRIBED') {
                     syncChannel.send({
                         type: 'broadcast',
@@ -372,7 +372,7 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
                     table: 'conversations',
                     filter: `id=eq.${conversationId}`
                 },
-                (payload) => {
+                (payload: any) => {
                     const updated = payload.new as any
                     if (updated.is_group) {
                         setOtherUser(prev => prev ? {
@@ -630,7 +630,7 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
                     schema: 'public',
                     table: 'message_reactions',
                 },
-                (payload) => {
+                (payload: any) => {
                     // We could try to smartly update messages, but refreshing is safer to stay in sync
                     // Or check if it belongs to our messages.
                     // A simple re-fetch or manual splice is fine.
@@ -703,6 +703,17 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
                 title={isGroup ? "Manage Group Settings" : undefined}
             >
                 <div className="flex items-center gap-3">
+                    {/* Back Button for Mobile */}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation()
+                            router.push('/messages')
+                        }}
+                        className="md:hidden p-2 -ml-2 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
+                    >
+                        <ArrowLeft className="w-5 h-5" />
+                    </button>
+
                     <div className="relative">
                         <EmployeeAvatar
                             avatarUrl={otherUser?.avatar_url || null}
