@@ -14,6 +14,8 @@ interface RealtimeContextType {
     isUserOnline: (userId: string) => boolean
     activeConversationId: string | null
     setActiveConversationId: (id: string | null) => void
+    notificationPermission: NotificationPermission
+    requestPermission: () => Promise<void>
 }
 
 const RealtimeContext = createContext<RealtimeContextType | undefined>(undefined)
@@ -23,14 +25,20 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
     const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
     const activeConvRef = useRef<string | null>(null)
     const handledMessagesRef = useRef<Set<string>>(new Set())
-    const supabase = useMemo(() => createClient(), [])
+    const supabase = createClient()
     const audioRef = useRef<HTMLAudioElement | null>(null)
 
     // Initialize notification sound
     useEffect(() => {
-        audioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3')
+        // High-quality notification sound as a Base64 data URI
+        const pingBase64 = 'data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA/wAAAACAFG7bgAAAAAAAANuWAAAAAAAAAAEAAA6F//7kMQZAAAAGkAaACAAAnQBoAIAAAnQBj7v8AAAAA//uQxBkAAADYAYAAAAAC2AGAAAAAAEY+7/AAAAAP/7kMQZAAAAlgBgAAAAAJYAYAAAAAARj7v8AAAAA/+5DEGQAAACYAYAAAAACWAGAAAAAAEY+7/AAAAAD'
+        const audio = new Audio(pingBase64)
+        audio.preload = 'auto'
+        audio.onerror = (e) => {
+            console.warn('[Realtime] Failed to load notification sound fallback.', e)
+        }
+        audioRef.current = audio
     }, [])
-
     const updateDbStatus = useCallback(async (online: boolean) => {
         if (!currentUserId) return
         try {
@@ -50,46 +58,145 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
         activeConvRef.current = activeConversationId
     }, [activeConversationId])
 
+    const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default')
+
+    // Sync DB status on mount/unmount
+    useEffect(() => {
+        updateDbStatus(true)
+        return () => { updateDbStatus(false) }
+    }, [updateDbStatus])
+
     const showNotification = useCallback((payload: any) => {
-        console.log('[Realtime] Attempting to show notification:', payload)
-        if (Notification.permission === 'granted') {
-            const { sender_name, content } = payload
-            new Notification(`New message from ${sender_name}`, {
-                body: content,
-                icon: '/favicon.ico'
-            })
-        } else {
-            console.warn('[Realtime] Notification permission state:', Notification.permission)
+        if (typeof Notification !== 'undefined') {
+            console.log('[Realtime] showNotification called. State:', Notification.permission, 'Payload:', payload)
+            if (Notification.permission === 'granted') {
+                const { sender_name, content } = payload
+                try {
+                    const n = new Notification(sender_name, {
+                        body: content,
+                        tag: 'new-message',
+                        requireInteraction: false,
+                        silent: false // Explicitly allow sound
+                    })
+                    n.onclick = () => {
+                        window.focus()
+                        n.close()
+                    }
+                    console.log('[Realtime] Notification object created successfully')
+                } catch (err) {
+                    console.error('[Realtime] Browser notification constructor failed:', err)
+                }
+            } else {
+                console.warn('[Realtime] Notification suppressed: Permission is', Notification.permission)
+                if (Notification.permission === 'default') {
+                    console.log('[Realtime] Prompting for permission again...')
+                    Notification.requestPermission()
+                }
+            }
         }
     }, [])
+
+    // Web Push Registration
+    useEffect(() => {
+        if (!currentUserId || typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+            return
+        }
+
+        const registerPush = async () => {
+            try {
+                const registration = await navigator.serviceWorker.register('/sw.js')
+                console.log('[SW] Registered:', registration)
+
+                // Wait for registration to be ready
+                const ready = await navigator.serviceWorker.ready
+
+                let subscription = await ready.pushManager.getSubscription()
+
+                if (!subscription && Notification.permission === 'granted') {
+                    console.log('[Push] Creating new subscription...')
+                    const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+                    if (!vapidPublicKey) {
+                        console.error('[Push] VAPID Key missing')
+                        return
+                    }
+
+                    // Convert base64 VAPID key to UInt8Array
+                    const padding = '='.repeat((4 - vapidPublicKey.length % 4) % 4)
+                    const base64 = (vapidPublicKey + padding).replace(/-/g, '+').replace(/_/g, '/')
+                    const rawData = window.atob(base64)
+                    const outputArray = new Uint8Array(rawData.length)
+                    for (let i = 0; i < rawData.length; ++i) {
+                        outputArray[i] = rawData.charCodeAt(i)
+                    }
+
+                    subscription = await ready.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: outputArray
+                    })
+                }
+
+                if (subscription) {
+                    console.log('[Push] Subscription active:', subscription.endpoint)
+
+                    // Verify Auth Session before Save
+                    const { data: { session } } = await supabase.auth.getSession()
+                    console.log('[Push] Client Auth State:', session ? 'Authenticated' : 'Anonymous', 'UID:', session?.user?.id, 'Prop ID:', currentUserId)
+
+                    // Save to DB
+                    const p256dh = btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(subscription.getKey('p256dh')!))))
+                    const auth = btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(subscription.getKey('auth')!))))
+
+                    console.log('[Push] Saving to DB with user_id:', currentUserId)
+                    const { error } = await supabase
+                        .from('push_subscriptions')
+                        .upsert({
+                            user_id: currentUserId,
+                            endpoint: subscription.endpoint,
+                            p256dh,
+                            auth
+                        }, { on_conflict: 'user_id, endpoint' })
+
+                    if (error) {
+                        console.error('[Push] DB Save Error:', error.message, 'Code:', error.code)
+                    } else {
+                        console.log('[Push] Subscription synced to DB successfully!')
+                    }
+                }
+            } catch (err) {
+                console.error('[Push] Registration failed:', err)
+            }
+        }
+
+        registerPush()
+    }, [currentUserId, supabase])
 
     useEffect(() => {
         if (!currentUserId) return
 
         console.log('[Realtime] Starting main-realtime channel for user:', currentUserId)
 
-        // 1. Request Notification Permission
-        if (Notification.permission === 'default') {
-            Notification.requestPermission()
+        // Sync Notification Permission state (Client-side Only)
+        if (typeof Notification !== 'undefined') {
+            setNotificationPermission(Notification.permission)
+
+            // Request Notification Permission if default
+            if (Notification.permission === 'default') {
+                Notification.requestPermission().then(perm => {
+                    setNotificationPermission(perm)
+                })
+            }
         }
 
-        // 2. Persistent Realtime Channel (Presence + Listeners)
-        const mainChannel = supabase.channel('main-realtime', {
+        const channel = supabase.channel('main-realtime', {
             config: {
                 presence: { key: currentUserId },
             },
         })
 
-        mainChannel
+        channel
             .on('presence', { event: 'sync' }, () => {
-                const newState = mainChannel.presenceState<PresenceState>()
+                const newState = channel.presenceState() as Record<string, PresenceState[]>
                 setOnlineUsers(newState)
-            })
-            .on('presence', { event: 'join' }, ({ key }: { key: string }) => {
-                if (key === currentUserId) updateDbStatus(true)
-            })
-            .on('presence', { event: 'leave' }, ({ key }: { key: string }) => {
-                if (key === currentUserId) updateDbStatus(false)
             })
             .on(
                 'postgres_changes',
@@ -98,48 +205,62 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
                     schema: 'public',
                     table: 'messages'
                 },
-                async (payload) => {
+                async (payload: any) => {
                     const newMessage = payload.new
-                    console.log('[Realtime] New message detected:', newMessage.id)
-
-                    // Track handled message ID for deduplication with broadcast fallback
-                    handledMessagesRef.current.add(newMessage.id);
+                    handledMessagesRef.current.add(newMessage.id)
                     if (handledMessagesRef.current.size > 100) {
-                        const firstEntry = handledMessagesRef.current.values().next().value;
-                        if (firstEntry) handledMessagesRef.current.delete(firstEntry);
+                        const first = handledMessagesRef.current.values().next().value
+                        if (first) handledMessagesRef.current.delete(first)
                     }
 
-                    // Skip if from self
                     if (newMessage.sender_id === currentUserId) return
 
-                    // Check if chat is active (don't notify)
-                    if (newMessage.conversation_id === activeConvRef.current) {
-                        console.log('[Realtime] Notification suppressed: active chat window')
-                        return
+                    let enrichedMessage = { ...newMessage }
+                    let conversationName = ''
+
+                    try {
+                        const { data: fullMsg } = await supabase
+                            .from('messages')
+                            .select('*, sender:employees!messages_sender_id_fkey(full_name), conversation:conversations(name, is_group)')
+                            .eq('id', newMessage.id)
+                            .single()
+
+                        if (fullMsg) {
+                            enrichedMessage = fullMsg
+                            if (fullMsg.conversation?.is_group && fullMsg.conversation.name) {
+                                conversationName = fullMsg.conversation.name
+                            }
+                        }
+                    } catch (e) { console.error('[Realtime] Quick enrichment failed', e) }
+
+                    const isTabHidden = typeof document !== 'undefined' && document.visibilityState === 'hidden'
+                    const isActive = newMessage.conversation_id === activeConvRef.current
+
+                    console.log('[Realtime] Message Received -> isActive:', isActive, 'isTabHidden:', isTabHidden)
+
+                    if (!isActive || isTabHidden) {
+                        // Play sound only if not active/visible
+                        if (audioRef.current) {
+                            audioRef.current.currentTime = 0
+                            audioRef.current.play().catch(() => { /* expected on first load */ })
+                        }
+
+                        const senderName = (enrichedMessage as any).sender?.full_name || 'Someone'
+                        const title = conversationName ? `${senderName} in ${conversationName}` : senderName
+
+                        let displayContent = newMessage.content
+                        if (newMessage.type === 'image') displayContent = '📷 Image'
+                        else if (newMessage.type === 'audio') displayContent = '🎤 Voice message'
+                        else if (newMessage.type === 'file') displayContent = '📁 File'
+
+                        showNotification({ sender_name: title, content: displayContent })
+                    }
+                    else {
+                        console.log('[Realtime] Notification skipped: User is active in this conversation and tab is visible')
                     }
 
-                    // Play sound
-                    audioRef.current?.play().catch(e => console.warn('[Realtime] Sound error:', e))
-
-                    // Get sender details
-                    const { data: sender } = await supabase
-                        .from('employees')
-                        .select('full_name')
-                        .eq('id', newMessage.sender_id)
-                        .single()
-
-                    showNotification({
-                        sender_name: sender?.full_name || 'Someone',
-                        content: newMessage.content
-                    })
-
-                    // Dispatch global event for components (ChatWindow, Sidebar)
-                    window.dispatchEvent(new CustomEvent('new-message', {
-                        detail: { message: newMessage }
-                    }))
-
                     // Auto-mark as delivered via broadcast
-                    mainChannel.send({
+                    channel.send({
                         type: 'broadcast',
                         event: 'message-status',
                         payload: {
@@ -148,52 +269,31 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
                             conversation_id: newMessage.conversation_id
                         }
                     })
+                    window.dispatchEvent(new CustomEvent('new-message', { detail: { message: enrichedMessage } }))
                 }
             )
             .on(
                 'broadcast',
                 { event: 'new-message-fallback' },
-                async (payload) => {
-                    const { message, sender_name } = payload.payload;
-                    console.log('[Realtime] Fallback message received via broadcast:', message.id);
+                (payload: any) => {
+                    const { message, sender_name } = payload.payload
+                    if (message.sender_id === currentUserId || handledMessagesRef.current.has(message.id)) return
+                    handledMessagesRef.current.add(message.id)
 
-                    // Skip if from self
-                    if (message.sender_id === currentUserId) return;
-
-                    // Deduplicate: If we already handled this message via postgres_changes, ignore broadcast
-                    // (We can use a simple ref set for this)
-                    if (handledMessagesRef.current.has(message.id)) {
-                        console.log('[Realtime] Ignoring fallback broadcast: already handled by DB');
-                        return;
-                    }
-                    handledMessagesRef.current.add(message.id);
-                    // Cleanup old IDs
-                    if (handledMessagesRef.current.size > 100) {
-                        const firstEntry = handledMessagesRef.current.values().next().value;
-                        if (firstEntry) handledMessagesRef.current.delete(firstEntry);
+                    if (audioRef.current) {
+                        audioRef.current.currentTime = 0
+                        audioRef.current.play().catch(() => { })
                     }
 
-                    // Check if chat is active (don't notify)
-                    if (message.conversation_id === activeConvRef.current) {
-                        console.log('[Realtime] Fallback suppressed: active chat window');
-                        return;
+                    const isTabHidden = typeof document !== 'undefined' && document.visibilityState === 'hidden'
+                    const isActive = message.conversation_id === activeConvRef.current
+
+                    if (!isActive || isTabHidden) {
+                        showNotification({ sender_name: sender_name || 'Someone', content: message.content })
                     }
-
-                    // Play sound
-                    audioRef.current?.play().catch(e => console.warn('[Realtime] Sound error fallback:', e));
-
-                    showNotification({
-                        sender_name: sender_name || 'Someone',
-                        content: message.content
-                    });
-
-                    // Dispatch global event for components
-                    window.dispatchEvent(new CustomEvent('new-message', {
-                        detail: { message: message }
-                    }))
 
                     // Auto-mark as delivered via broadcast
-                    mainChannel.send({
+                    channel.send({
                         type: 'broadcast',
                         event: 'message-status',
                         payload: {
@@ -201,46 +301,40 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
                             status: 'delivered',
                             conversation_id: message.conversation_id
                         }
-                    });
+                    })
+                    window.dispatchEvent(new CustomEvent('new-message', { detail: { message } }))
                 }
             )
             .on(
                 'broadcast',
                 { event: 'message-status' },
-                (payload) => {
-                    const { message_id, status, conversation_id } = payload.payload
-                    window.dispatchEvent(new CustomEvent('message-status-update', {
-                        detail: { message_id, status, conversation_id }
-                    }))
+                (payload: any) => {
+                    window.dispatchEvent(new CustomEvent('message-status-update', { detail: payload.payload }))
                 }
             )
             .on(
                 'broadcast',
                 { event: 'conversation-seen' },
-                (payload) => {
+                (payload: any) => {
                     const { conversation_id, user_id } = payload.payload
-                    window.dispatchEvent(new CustomEvent('conversation-seen', {
-                        detail: { conversation_id, user_id }
-                    }))
+                    if (user_id === currentUserId) {
+                        window.dispatchEvent(new CustomEvent('unread-count-reset', { detail: { conversation_id, user_id } }))
+                    }
+                    window.dispatchEvent(new CustomEvent('conversation-seen', { detail: { conversation_id, user_id } }))
                 }
             )
-            .subscribe(async (status) => {
+            .subscribe(async (status: any) => {
                 if (status === 'SUBSCRIBED') {
-                    console.log('[Realtime] Successfully subscribed to main-realtime')
-                    await mainChannel.track({
-                        user_id: currentUserId,
-                        online_at: new Date().toISOString(),
-                    })
-                } else {
-                    console.error('[Realtime] Subscription error:', status)
+                    console.log('[Realtime] Subscribed to main-realtime')
+                    await channel.track({ user_id: currentUserId, online_at: new Date().toISOString() })
                 }
             })
 
         return () => {
-            console.log('[Realtime] Cleaning up main-realtime')
-            mainChannel.unsubscribe()
+            console.log('[Realtime] Unsubscribing main-realtime')
+            supabase.removeChannel(channel)
         }
-    }, [currentUserId, supabase, updateDbStatus, showNotification])
+    }, [currentUserId, supabase, showNotification])
 
     const isUserOnline = useCallback((userId: string) => {
         return !!onlineUsers[userId]
@@ -253,8 +347,18 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
         setActiveConversationId
     }), [onlineUsers, isUserOnline, activeConversationId])
 
+    const requestPermission = useCallback(async () => {
+        if (typeof Notification === 'undefined') return
+        const permission = await Notification.requestPermission()
+        setNotificationPermission(permission)
+        if (permission === 'granted') {
+            // Re-trigger push registration since we now have permission
+            window.location.reload() // Simplest way to re-run the registration effect
+        }
+    }, [])
+
     return (
-        <RealtimeContext.Provider value={value}>
+        <RealtimeContext.Provider value={{ onlineUsers, isUserOnline, activeConversationId, setActiveConversationId, notificationPermission, requestPermission }}>
             {children}
         </RealtimeContext.Provider>
     )

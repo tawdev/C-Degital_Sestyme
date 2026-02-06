@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { createClient } from '@/lib/supabase/client'
+
 import { getUnreadCount } from '@/app/(main)/chat/actions'
 
 /**
@@ -15,7 +15,7 @@ export function useUnreadCount(initialCount: number, userId: string, conversatio
     // lastRealtimeUpdateRef tracks when we last got a +1 from Realtime
     const lastRealtimeUpdateRef = useRef(0)
 
-    const supabase = createClient()
+
     const userIdRef = useRef(userId)
     const convIdRef = useRef(conversationId)
 
@@ -35,7 +35,7 @@ export function useUnreadCount(initialCount: number, userId: string, conversatio
         if (isLocked) {
             // During lock-in, only trust server if it yields a HIGHER count than us
             // OR if it explicitly resets to 0 (which means it's definitely been read)
-            if (initialCount > count || initialCount === 0) {
+            if (initialCount > lastCountRef.current || initialCount === 0) {
                 setCount(initialCount)
                 lastCountRef.current = initialCount
             }
@@ -46,7 +46,7 @@ export function useUnreadCount(initialCount: number, userId: string, conversatio
                 lastCountRef.current = initialCount
             }
         }
-    }, [initialCount, count])
+    }, [initialCount])
 
     const syncWithDb = useCallback(async () => {
         if (!userIdRef.current) return
@@ -58,96 +58,58 @@ export function useUnreadCount(initialCount: number, userId: string, conversatio
             const isLocked = now - lastRealtimeUpdateRef.current < 5000
 
             // Apply same stabilization logic to manual syncs
-            if (!isLocked || dbCount > count || dbCount === 0) {
+            // Use lastCountRef instead of state count to avoid dependency loop
+            if (!isLocked || dbCount > lastCountRef.current || dbCount === 0) {
                 setCount(dbCount)
                 lastCountRef.current = dbCount
             }
         } catch (err) {
             console.error('Error syncing unread count with DB:', err)
         }
-    }, [count])
+    }, [])
 
     useEffect(() => {
         if (!userId) return
 
-        // If we have a conversationId, we listen to that specific conversation.
-        // This handles both P2P and Group chats correctly.
-        const filter = conversationId
-            ? `conversation_id=eq.${conversationId}`
-            : `recipient_id=eq.${userId}`
+        const handleNewMessage = (e: any) => {
+            const { message } = e.detail
 
-        const channelId = conversationId
-            ? `unread_${userId}_${conversationId}`
-            : `unread_global_${userId}`
+            // Check if this message should increment OUR count
+            const isOurConvo = !conversationId || message.conversation_id === conversationId
+            const isSomeoneElse = message.sender_id !== userId
 
-        const channel = supabase
-            .channel(channelId)
-            .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'messages',
-                    filter: filter
-                },
-                (payload) => {
-                    const msg = payload.new as any
+            if (isOurConvo && isSomeoneElse) {
+                console.log('[useUnreadCount] Incrementing count for:', conversationId || 'global')
+                setCount(prev => prev + 1)
+            }
+        }
 
-                    // For specific conversation: Increment if someone else sent it
+        const handleReadReset = (e: any) => {
+            const { conversation_id, user_id } = e.detail
+            if (user_id === userId) {
+                if (!conversationId || conversation_id === conversationId) {
+                    console.log('[useUnreadCount] Resetting count for:', conversationId || 'global')
                     if (conversationId) {
-                        if (msg.sender_id !== userId) {
-                            setCount(prev => {
-                                const next = prev + 1
-                                lastCountRef.current = next
-                                lastRealtimeUpdateRef.current = Date.now()
-                                return next
-                            })
-                        }
+                        setCount(0)
                     } else {
-                        // Global count (Fallback to P2P only for now)
-                        if (msg.recipient_id === userId) {
-                            setCount(prev => {
-                                const next = prev + 1
-                                lastCountRef.current = next
-                                lastRealtimeUpdateRef.current = Date.now()
-                                return next
-                            })
-                        }
-                    }
-                }
-            )
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'messages'
-                },
-                (payload) => {
-                    const msg = payload.new as any
-
-                    const matchesUser = msg.recipient_id === userId
-                    const matchesConv = !conversationId || msg.conversation_id === conversationId
-
-                    if (matchesConv && (matchesUser || conversationId)) {
-                        // When a message is updated (e.g. is_read changed or participants updated), we sync
-                        if (msg.is_read === true) {
-                            lastRealtimeUpdateRef.current = 0 // Clear lock
-                        }
+                        // For global count, we should probably re-sync with DB as only one convo was read
                         syncWithDb()
                     }
                 }
-            )
-            .subscribe((status) => {
-                if (status === 'SUBSCRIBED') {
-                    syncWithDb()
-                }
-            })
+            }
+        }
+
+        window.addEventListener('new-message', handleNewMessage)
+        window.addEventListener('unread-count-reset', handleReadReset)
+
+        // Initial sync
+        syncWithDb()
 
         return () => {
-            supabase.removeChannel(channel)
+            window.removeEventListener('new-message', handleNewMessage)
+            window.removeEventListener('unread-count-reset', handleReadReset)
         }
-    }, [userId, conversationId, supabase, syncWithDb])
+    }, [userId, conversationId, syncWithDb])
 
     return { count, setCount }
 }

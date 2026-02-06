@@ -39,10 +39,17 @@ export default function ChatSidebar({ conversations, contacts, activeId: propAct
             router.refresh()
         }
 
+        const handleReset = () => {
+            console.log('[ChatSidebar] Unread count reset detected, refreshing UI...')
+            router.refresh()
+        }
+
         window.addEventListener('new-message', handleNewMessage)
+        window.addEventListener('unread-count-reset', handleReset)
 
         return () => {
             window.removeEventListener('new-message', handleNewMessage)
+            window.removeEventListener('unread-count-reset', handleReset)
         }
     }, [router])
 

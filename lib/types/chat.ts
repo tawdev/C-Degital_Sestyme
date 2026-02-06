@@ -27,6 +27,14 @@ export interface ChatMessage {
         full_name: string
         avatar_url: string | null
     }
+    reply_to_id?: string | null
+    reply_to?: {
+        content: string
+        sender: {
+            full_name: string
+        }
+        type: string
+    } | null
 }
 
 export interface ChatMessageReaction {

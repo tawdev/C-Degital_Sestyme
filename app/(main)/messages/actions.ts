@@ -202,13 +202,59 @@ export async function getMessages(conversationId: string) {
         .from('messages')
         .select(`
             *,
-            sender:employees(id, full_name, avatar_url)
+            sender:employees!messages_sender_id_fkey(id, full_name, avatar_url),
+            reactions:message_reactions(
+                id,
+                user_id,
+                emoji
+            ),
+            reply_to:messages!messages_reply_to_id_fkey(
+                content,
+                type,
+                sender:employees!messages_sender_id_fkey(full_name)
+            )
         `)
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: true })
 
     if (error) {
-        console.error('Error fetching messages:', error)
+        console.error('[getMessages] Error fetching messages for conversation:', conversationId, error)
+        // Try a fallback query without joins to ensure user sees messages
+        const { data: fallbackData, error: fallbackError } = await adminClient
+            .from('messages')
+            .select(`
+                *,
+                sender:employees!messages_sender_id_fkey(id, full_name, avatar_url)
+            `)
+            .eq('conversation_id', conversationId)
+            .order('created_at', { ascending: true })
+
+        if (!fallbackError && fallbackData) {
+            console.log('[getMessages] Fallback succeeded, enriching replies manually.')
+            const messages = fallbackData as ChatMessage[]
+
+            // Collect unique reply IDs
+            const replyIds = Array.from(new Set(messages.filter(m => m.reply_to_id).map(m => m.reply_to_id))) as string[]
+
+            if (replyIds.length > 0) {
+                // Fetch all replied-to messages in one go
+                const { data: replies } = await adminClient
+                    .from('messages')
+                    .select('id, content, type, sender:employees!messages_sender_id_fkey(full_name)')
+                    .in('id', replyIds)
+
+                if (replies) {
+                    const repliesMap = new Map(replies.map(r => [r.id, r]))
+                    messages.forEach(m => {
+                        if (m.reply_to_id) {
+                            const r = repliesMap.get(m.reply_to_id)
+                            if (r) m.reply_to = r as any
+                        }
+                    })
+                }
+            }
+            return messages
+        }
         return []
     }
 
@@ -229,8 +275,8 @@ export async function sendMessage(conversationId: string, content: string, sende
 
     const recipientId = conv.user1_id === senderId ? conv.user2_id : conv.user1_id
 
-    // 2. Insert message with recipient_id for high-performance RLS
-    const { data, error } = await adminClient
+    // 2. Insert message with base data first
+    const { data: insertedMsg, error: insertError } = await adminClient
         .from('messages')
         .insert({
             conversation_id: conversationId,
@@ -243,12 +289,49 @@ export async function sendMessage(conversationId: string, content: string, sende
         .select()
         .single()
 
-    if (error) {
-        console.error('Error sending message:', error)
-        return { error: error.message }
+    if (insertError) {
+        console.error('Error sending message (insert):', insertError)
+        return { error: insertError.message }
     }
 
-    // 3. Update sender's last_read_at
+    // 3. Attempt enrichment
+    const { data: enrichedMsg } = await adminClient
+        .from('messages')
+        .select(`
+            *,
+            sender:employees!messages_sender_id_fkey(id, full_name, avatar_url),
+            reactions:message_reactions(id, user_id, emoji),
+            reply_to:messages!messages_reply_to_id_fkey(
+                content,
+                type,
+                sender:employees!messages_sender_id_fkey(full_name)
+            )
+        `)
+        .eq('id', insertedMsg.id)
+        .single()
+
+    let finalData = enrichedMsg || insertedMsg
+
+    // Manual enrichment fallback for stale schema cache
+    if (!enrichedMsg) {
+        console.log('[sendMessage] Enrichment failed, performing manual fallback joins')
+        try {
+            const { data: sender } = await adminClient
+                .from('employees')
+                .select('id, full_name, avatar_url')
+                .eq('id', senderId)
+                .single()
+            if (sender) finalData.sender = sender
+
+            // Note: messages/actions.ts sendMessage doesn't currently take a replyToId, 
+            // but we keep it consistent or add it if needed. 
+            // Checking types... it seems this one is simpler.
+        } catch (e) {
+            console.error('[sendMessage] Manual fallback failed:', e)
+        }
+    }
+
+    // 4. Update sender's last_read_at
     await adminClient
         .from('conversation_participants')
         .update({ last_read_at: new Date().toISOString() })
@@ -256,7 +339,7 @@ export async function sendMessage(conversationId: string, content: string, sende
         .eq('user_id', senderId)
 
     revalidatePath('/messages')
-    return { success: true, message: data }
+    return { success: true, message: finalData }
 }
 
 /**

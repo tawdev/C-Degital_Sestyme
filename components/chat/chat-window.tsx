@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useRealtime } from '@/context/realtime-context'
 import { ChatMessage, ChatRole } from '@/lib/types/chat'
 import { sendMessage, getMessages, markConversationAsRead, deleteMessage, toggleReaction, getConversationDetails, getGroupMembers, updateMessageStatus, updateAllDelivered } from '@/app/(main)/chat/actions' // Correct path
-import { Send, Loader2, Paperclip, Mic, X, File as FileIcon, Square, CheckCircle2, Download, Trash2, SmilePlus, Users, Settings, Phone, Video as VideoIcon, Check, CheckCheck } from 'lucide-react'
+import { Send, Loader2, Paperclip, Mic, X, File as FileIcon, Square, CheckCircle2, Download, Trash2, SmilePlus, Users, Settings, Phone, Video as VideoIcon, Check, CheckCheck, Reply } from 'lucide-react'
 import EmployeeAvatar from '@/components/employee-avatar'
 import GroupSettingsModal from './group-settings-modal'
 import { useCall } from './call-manager'
@@ -59,8 +59,14 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLInputElement>(null)
     const router = useRouter()
-    const { isUserOnline, setActiveConversationId } = useRealtime()
+    const { isUserOnline, setActiveConversationId, notificationPermission, requestPermission } = useRealtime()
     const [statusUpdates, setStatusUpdates] = useState<Record<string, 'delivered' | 'seen'>>({})
+    const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null)
+    const [hasMounted, setHasMounted] = useState(false)
+
+    useEffect(() => {
+        setHasMounted(true)
+    }, [])
 
     // track active conversation for notification filtering
     useEffect(() => {
@@ -74,16 +80,38 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
             await markConversationAsRead(conversationId)
 
             // 3. BROADCAST seen status to others (Reliable fallback)
+            console.log('[ChatWindow] Broadcasting conversation-seen focus for:', conversationId)
             const sb = createClient()
-            sb.channel('main-realtime').send({
-                type: 'broadcast',
-                event: 'conversation-seen',
-                payload: {
-                    conversation_id: conversationId,
-                    user_id: currentUser.id
+            const syncChannel = sb.channel(`sync-seen-${Date.now()}`)
+            syncChannel.subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                    syncChannel.send({
+                        type: 'broadcast',
+                        event: 'conversation-seen',
+                        payload: {
+                            conversation_id: conversationId,
+                            user_id: currentUser.id
+                        }
+                    }).then(() => {
+                        sb.removeChannel(syncChannel)
+                    })
                 }
             })
+
+            // 4. RESET local unread state immediately
+            window.dispatchEvent(new CustomEvent('unread-count-reset', {
+                detail: { conversation_id: conversationId, user_id: currentUser.id }
+            }))
         }
+
+        // Listen for tab focus / visibility to re-sync status
+        const handleVisibility = () => {
+            if (document.visibilityState === 'visible') {
+                syncStatus()
+            }
+        }
+        window.addEventListener('focus', syncStatus)
+        window.addEventListener('visibilitychange', handleVisibility)
 
         syncStatus()
 
@@ -158,11 +186,13 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
 
         return () => {
             setActiveConversationId(null)
+            window.removeEventListener('focus', syncStatus)
+            window.removeEventListener('visibilitychange', handleVisibility)
             window.removeEventListener('message-status-update', handleStatusUpdate)
             window.removeEventListener('conversation-seen', handleConvoSeen)
             window.removeEventListener('new-message', handleNewMessage)
         }
-    }, [conversationId, setActiveConversationId, currentUser.id, messages.length])
+    }, [conversationId, setActiveConversationId, currentUser.id])
 
     // Multimedia state
     const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -504,7 +534,15 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
             type: type,
             file_name: fileToSend?.name,
             file_size: fileToSend?.size,
-            duration: isAudio ? recordingTime : null
+            duration: isAudio ? recordingTime : null,
+            reply_to_id: replyingTo?.id,
+            reply_to: replyingTo ? {
+                content: replyingTo.content,
+                sender: {
+                    full_name: replyingTo.sender?.full_name || 'Someone'
+                },
+                type: replyingTo.type
+            } : null
         }
 
         setMessages(prev => [...prev, {
@@ -527,6 +565,9 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
             formData.append('type', type)
             if (recordingTime > 0) formData.append('duration', recordingTime.toString())
             if (fileToSend) formData.append('file', fileToSend)
+            if (replyingTo) formData.append('replyToId', replyingTo.id)
+
+            setReplyingTo(null) // Clear reply state
 
             const result = await sendMessage(formData)
 
@@ -745,6 +786,24 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
                 </div>
             )}
 
+            {/* Notification Permission Banner */}
+            {hasMounted && notificationPermission === 'default' && (
+                <div className="bg-indigo-600 px-4 py-2 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-2 text-white">
+                        <Settings className="w-4 h-4 animate-pulse" />
+                        <p className="text-xs font-bold">
+                            Activer les notifications système pour ne manquer aucun message ?
+                        </p>
+                    </div>
+                    <button
+                        onClick={requestPermission}
+                        className="bg-white text-indigo-600 px-3 py-1 rounded-md text-[10px] font-black uppercase hover:bg-indigo-50 transition-colors shadow-sm"
+                    >
+                        Activer maintenant
+                    </button>
+                </div>
+            )}
+
             {/* Messages Area */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {loading ? (
@@ -783,13 +842,39 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
                                     </span>
                                 )}
 
-                                <div className={`flex items-end gap-2 ${msg.sender_id === currentUser.id ? 'flex-row-reverse' : 'flex-row'}`}>
+                                <div className={`flex flex-col ${msg.sender_id === currentUser.id ? 'items-end' : 'items-start'} gap-1`}>
 
-                                    {/* Bubble */}
-                                    <div className={`relative px-4 py-2 shadow-sm ${msg.sender_id === currentUser.id
+                                    {/* Bubble (now containing both reply and content) */}
+                                    <div className={`relative px-4 py-2 shadow-sm max-w-full ${msg.sender_id === currentUser.id
                                         ? 'bg-indigo-600 text-white rounded-2xl rounded-tr-sm'
                                         : 'bg-white text-gray-900 rounded-2xl rounded-tl-sm border border-gray-100'
                                         }`}>
+
+                                        {/* Quote (Reply) rendering - Now inside bubble at the top */}
+                                        {msg.reply_to && (
+                                            <div
+                                                onClick={() => {
+                                                    const target = document.getElementById(`msg-${msg.reply_to_id}`)
+                                                    target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                                                    target?.classList.add('ring-2', 'ring-indigo-400', 'ring-offset-2')
+                                                    setTimeout(() => target?.classList.remove('ring-2', 'ring-indigo-400', 'ring-offset-2'), 2000)
+                                                }}
+                                                className={`mb-2 p-2 rounded-lg border-l-4 cursor-pointer text-xs max-w-full truncate ${msg.sender_id === currentUser.id
+                                                    ? 'bg-indigo-500/30 border-indigo-300 text-indigo-50'
+                                                    : 'bg-gray-100 border-gray-300 text-gray-600'
+                                                    }`}
+                                            >
+                                                <p className="font-bold mb-0.5">{msg.reply_to.sender.full_name}</p>
+                                                <p className="truncate opacity-80">
+                                                    {msg.reply_to.type === 'image' ? '📷 Image' :
+                                                        msg.reply_to.type === 'audio' ? '🎤 Voice message' :
+                                                            msg.reply_to.type === 'file' ? '📁 File' :
+                                                                msg.reply_to.content}
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {/* Original Message Content */}
                                         {(msg as any).type === 'image' ? (
                                             <div className="mb-1 relative group/image">
                                                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -871,12 +956,10 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
                                         )}
                                     </div>
 
-                                    {/* Reaction Picker & Delete (Outside Bubble, Inside Relative Wrapper) */}
+                                    {/* Reaction Picker, Delete & Reply (Outside Bubble, Inside Relative Wrapper) */}
                                     {!isAdminMonitoring && (
-                                        <div className={`opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center absolute top-full left-0 right-0 z-50 ${msg.sender_id === currentUser.id ? 'justify-end' : 'justify-start'
-                                            } pt-2 pointer-events-auto`}>
-                                            <div className={`bg-white/95 backdrop-blur-sm shadow-xl rounded-full border border-gray-100 flex items-center p-1.5 gap-1 whitespace-nowrap ${msg.sender_id === currentUser.id ? 'flex-row-reverse' : 'flex-row'
-                                                }`}>
+                                        <div className={`opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center absolute top-full left-0 right-0 z-50 ${msg.sender_id === currentUser.id ? 'justify-end' : 'justify-start'} pt-2 pointer-events-auto`}>
+                                            <div className={`bg-white/95 backdrop-blur-sm shadow-xl rounded-full border border-gray-100 flex items-center p-1.5 gap-1 whitespace-nowrap ${msg.sender_id === currentUser.id ? 'flex-row-reverse' : 'flex-row'}`}>
                                                 {emojis.map(emoji => (
                                                     <button
                                                         key={emoji}
@@ -886,6 +969,20 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
                                                         {emoji}
                                                     </button>
                                                 ))}
+
+                                                <div className="w-px h-4 bg-gray-200 mx-1"></div>
+
+                                                {/* Reply Button */}
+                                                <button
+                                                    onClick={() => {
+                                                        setReplyingTo(msg)
+                                                        inputRef.current?.focus()
+                                                    }}
+                                                    className="p-1.5 hover:bg-gray-100 rounded-full transition-transform text-gray-500 hover:text-indigo-600"
+                                                    title="Reply"
+                                                >
+                                                    <Reply className="w-4 h-4" />
+                                                </button>
 
                                                 {/* Delete Button inside the pill */}
                                                 {msg.sender_id === currentUser.id && currentUser.role !== 'admin' && (
@@ -924,7 +1021,29 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
                     </p>
                 </div>
             ) : (
-                <form onSubmit={handleSend} className="p-4 bg-white border-t border-gray-200">
+                <form onSubmit={handleSend} className="p-4 bg-white border-t border-gray-200 z-10">
+
+                    {/* Replying to Preview */}
+                    {replyingTo && (
+                        <div className="mb-2 p-3 bg-gray-50 border-l-4 border-indigo-500 rounded-lg flex items-center justify-between animate-in slide-in-from-bottom-2">
+                            <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold text-indigo-600">{replyingTo.sender?.full_name}</p>
+                                <p className="text-xs text-gray-500 truncate">
+                                    {replyingTo.type === 'image' ? '📷 Image' :
+                                        replyingTo.type === 'audio' ? '🎤 Voice message' :
+                                            replyingTo.type === 'file' ? '📁 File' :
+                                                replyingTo.content}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setReplyingTo(null)}
+                                className="p-1 hover:bg-gray-200 rounded-full transition-colors ml-2"
+                            >
+                                <X className="w-4 h-4 text-gray-400" />
+                            </button>
+                        </div>
+                    )}
 
                     {/* File Preview */}
                     {selectedFile && (
@@ -962,7 +1081,6 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
                                 <X className="h-5 w-5" />
                             </button>
                             <button type="button" onClick={stopRecording} className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600">
-                                <CheckCircle2 className="h-5 w-5" /> {/* Wait, CheckCircle2 not imported, use Send/Stop icon */}
                                 <Square className="h-4 w-4 fill-current" />
                             </button>
                         </div>
@@ -970,7 +1088,7 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
                         <div className="flex gap-2 items-end">
                             <button
                                 type="button"
-                                onClick={() => fileInputRef.current?.click()}
+                                onClick={() => (fileInputRef as any).current?.click()}
                                 className="p-3 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                                 title="Attach file"
                             >

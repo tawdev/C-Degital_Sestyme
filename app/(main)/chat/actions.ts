@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { ChatMessage, ChatConversation } from '@/lib/types/chat'
 import { getSession } from '@/app/auth/actions'
+import webPush from 'web-push'
 
 export async function getEmployees() {
     const adminClient = createAdminClient()
@@ -295,13 +296,54 @@ export async function getMessages(conversationId: string) {
                 id,
                 user_id,
                 emoji
+            ),
+            reply_to:messages!messages_reply_to_id_fkey(
+                content,
+                type,
+                sender:employees!messages_sender_id_fkey(full_name)
             )
         `)
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: true })
 
     if (error) {
-        console.error('Error fetching messages:', error)
+        console.error('[getMessages] Error fetching messages for conversation:', conversationId, error)
+        // Try a fallback query without joins to ensure user sees messages
+        const { data: fallbackData, error: fallbackError } = await adminClient
+            .from('messages')
+            .select(`
+                *,
+                sender:employees!messages_sender_id_fkey(id, full_name, avatar_url)
+            `)
+            .eq('conversation_id', conversationId)
+            .order('created_at', { ascending: true })
+
+        if (!fallbackError && fallbackData) {
+            console.log('[getMessages] Fallback succeeded, enriching replies manually.')
+            const messages = fallbackData as ChatMessage[]
+
+            // Collect unique reply IDs
+            const replyIds = Array.from(new Set(messages.filter(m => m.reply_to_id).map(m => m.reply_to_id))) as string[]
+
+            if (replyIds.length > 0) {
+                // Fetch all replied-to messages in one go
+                const { data: replies } = await adminClient
+                    .from('messages')
+                    .select('id, content, type, sender:employees!messages_sender_id_fkey(full_name)')
+                    .in('id', replyIds)
+
+                if (replies) {
+                    const repliesMap = new Map(replies.map(r => [r.id, r]))
+                    messages.forEach(m => {
+                        if (m.reply_to_id) {
+                            const r = repliesMap.get(m.reply_to_id)
+                            if (r) m.reply_to = r as any
+                        }
+                    })
+                }
+            }
+            return messages
+        }
         return []
     }
 
@@ -319,6 +361,7 @@ export async function sendMessage(formData: FormData) {
     const senderRole = session.role === 'Administrator' ? 'admin' : 'employee'
     const type = (formData.get('type') as string) || 'text'
     const duration = formData.get('duration') ? parseInt(formData.get('duration') as string) : null
+    const replyToId = formData.get('replyToId') as string | null
     const id = formData.get('id') as string | null
 
     // File handling
@@ -370,39 +413,99 @@ export async function sendMessage(formData: FormData) {
     }
 
     // 2. Insert message
-    const { data, error } = await adminClient
+    const messageData: any = {
+        id: id || undefined,
+        conversation_id: conversationId,
+        content: fileUrl,
+        sender_id: senderId,
+        sender_role: senderRole,
+        recipient_id: recipientId,
+        is_read: false,
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+        type: type,
+        file_name: fileName,
+        file_size: fileSize,
+        duration: duration
+    }
+
+    if (replyToId) {
+        messageData.reply_to_id = replyToId
+    }
+
+    // 2. Insert message with base data first to ensure success even if schema is stale
+    const { data: insertedMsg, error: insertError } = await adminClient
         .from('messages')
-        .insert({
-            id: id || undefined,
-            conversation_id: conversationId,
-            content: fileUrl,
-            sender_id: senderId,
-            sender_role: senderRole,
-            recipient_id: recipientId,
-            is_read: false,
-            status: 'sent',
-            sent_at: new Date().toISOString(),
-            type: type,
-            file_name: fileName,
-            file_size: fileSize,
-            duration: duration
-        })
+        .insert(messageData)
         .select()
         .single()
 
-    if (error) {
-        console.error('Error sending message:', error)
-        return { error: error.message }
+    if (insertError) {
+        console.error('Error sending message (insert):', insertError)
+        return { error: insertError.message }
     }
 
-    // 3. Update sender's last_read_at to current time
+    // 3. Attempt to enrich with metadata (replies, reactions, etc.)
+    // If this fails due to schema sync/missing columns, we still have the base message!
+    const { data: enrichedMsg } = await adminClient
+        .from('messages')
+        .select(`
+            *,
+            sender:employees!messages_sender_id_fkey(id, full_name, avatar_url),
+            reactions:message_reactions(id, user_id, emoji),
+            reply_to:messages!messages_reply_to_id_fkey(
+                content,
+                type,
+                sender:employees!messages_sender_id_fkey(full_name)
+            )
+        `)
+        .eq('id', insertedMsg.id)
+        .single()
+
+    let finalData = enrichedMsg || insertedMsg
+
+    // If enrichment failed but it's a reply/has sender, try minimalist manual joins
+    if (!enrichedMsg) {
+        console.log('[sendMessage] Enrichment failed, performing manual fallback joins')
+        try {
+            // 1. Manually get sender info
+            const { data: sender } = await adminClient
+                .from('employees')
+                .select('id, full_name, avatar_url')
+                .eq('id', senderId)
+                .single()
+            if (sender) finalData.sender = sender
+
+            // 2. Manually get reply info if needed
+            if (replyToId) {
+                const { data: replyMsg } = await adminClient
+                    .from('messages')
+                    .select('content, type, sender:sender_id(full_name)')
+                    .eq('id', replyToId)
+                    .single()
+
+                if (replyMsg) {
+                    // Normalize to the expected nested structure
+                    finalData.reply_to = {
+                        content: replyMsg.content,
+                        type: replyMsg.type,
+                        sender: { full_name: (replyMsg.sender as any)?.full_name || 'Someone' }
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[sendMessage] Manual fallback enrichment failed:', e)
+        }
+    }
+
+    // 4. Update sender's last_read_at to current time
     await adminClient
         .from('conversation_participants')
         .update({ last_read_at: new Date().toISOString() })
         .eq('conversation_id', conversationId)
         .eq('user_id', senderId)
 
-    // 4. BROADCAST FALLBACK: Ensure notification reaches recipient even if postgres_changes lags or fails
+    // 5. BROADCAST FALLBACK
     try {
         const { data: participants } = await adminClient
             .from('conversation_participants')
@@ -411,9 +514,18 @@ export async function sendMessage(formData: FormData) {
 
         if (participants) {
             const senderName = session.full_name || 'Someone'
+            let broadcastData = { ...finalData }
 
-            // We use the 'main-realtime' channel as a fallback broadcast
-            // Note: We use a simplified payload for broadcast
+            // If enrichment failed and it's a reply, try a simple manual join for broadcast
+            if (!enrichedMsg && replyToId) {
+                const { data: manualReply } = await adminClient
+                    .from('messages')
+                    .select('content, type, sender:employees!messages_sender_id_fkey(full_name)')
+                    .eq('id', replyToId)
+                    .single()
+                if (manualReply) broadcastData.reply_to = manualReply
+            }
+
             await Promise.all(participants.map(async (p) => {
                 if (p.user_id === senderId) return
 
@@ -421,7 +533,7 @@ export async function sendMessage(formData: FormData) {
                     type: 'broadcast',
                     event: 'new-message-fallback',
                     payload: {
-                        message: data,
+                        message: broadcastData,
                         sender_name: senderName
                     }
                 })
@@ -431,8 +543,77 @@ export async function sendMessage(formData: FormData) {
         console.error('[sendMessage] Broadcast fallback failed:', broadcastErr)
     }
 
+    // 6. WEB PUSH NOTIFICATIONS (WhatsApp Style)
+    try {
+        const vapidPublic = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+        const vapidPrivate = process.env.VAPID_PRIVATE_KEY
+
+        if (vapidPublic && vapidPrivate) {
+            webPush.setVapidDetails(
+                'mailto:admin@example.com',
+                vapidPublic,
+                vapidPrivate
+            )
+
+            // Get participants (excluding sender)
+            const { data: participants } = await adminClient
+                .from('conversation_participants')
+                .select('user_id')
+                .eq('conversation_id', conversationId)
+                .neq('user_id', senderId)
+
+            if (participants && participants.length > 0) {
+                const recipientIds = participants.map(p => p.user_id)
+
+                // Get subscriptions for all recipients
+                const { data: subscriptions } = await adminClient
+                    .from('push_subscriptions')
+                    .select('*')
+                    .in('user_id', recipientIds)
+
+                if (subscriptions && subscriptions.length > 0) {
+                    const senderName = session.full_name || 'Someone'
+                    const notificationTitle = conv.is_group ? `New message in group` : senderName
+                    const notificationBody = type === 'text' ? content : (type === 'image' ? '📷 Image' : (type === 'voice' ? '🎤 Voice' : 'Attachment'))
+
+                    const pushPayload = JSON.stringify({
+                        title: notificationTitle,
+                        body: notificationBody,
+                        icon: '/favicon.ico',
+                        data: {
+                            conversationId,
+                            senderName
+                        }
+                    })
+
+                    // Send push to each subscription
+                    await Promise.all(subscriptions.map(async (sub) => {
+                        try {
+                            const pushSubscription = {
+                                endpoint: sub.endpoint,
+                                keys: {
+                                    p256dh: sub.p256dh,
+                                    auth: sub.auth
+                                }
+                            }
+                            await webPush.sendNotification(pushSubscription, pushPayload)
+                        } catch (err: any) {
+                            console.error('[Push] Error sending to subscription:', err.endpoint, err.statusCode)
+                            if (err.statusCode === 410 || err.statusCode === 404) {
+                                // Delete expired subscription
+                                await adminClient.from('push_subscriptions').delete().eq('id', sub.id)
+                            }
+                        }
+                    }))
+                }
+            }
+        }
+    } catch (pushErr) {
+        console.error('[sendMessage] Web Push failure:', pushErr)
+    }
+
     revalidatePath('/chat')
-    return { success: true, message: data }
+    return { success: true, message: finalData }
 }
 
 /**
