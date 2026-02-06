@@ -10,6 +10,7 @@ import { Plus, Users } from 'lucide-react'
 import GroupChatModal from './group-chat-modal'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useRealtime } from '@/context/realtime-context'
 
 interface ChatSidebarProps {
     conversations: ChatConversation[]
@@ -25,29 +26,47 @@ export default function ChatSidebar({ conversations, contacts, activeId: propAct
     const activeId = params?.id as string || propActiveId
     const [isGroupModalOpen, setIsGroupModalOpen] = useState(false)
     const [mounted, setMounted] = useState(false)
+    const [localReadIds, setLocalReadIds] = useState<Set<string>>(new Set())
+    const { isUserOnline } = useRealtime()
     const router = useRouter()
 
     useEffect(() => {
         setMounted(true)
 
-        const supabase = createClient()
-        // Subscribe to changes in conversations (triggered by new messages)
-        const channel = supabase
-            .channel('sidebar-reorder')
-            .on(
-                'postgres_changes',
-                { event: 'UPDATE', schema: 'public', table: 'conversations' },
-                () => {
-                    console.log('[ChatSidebar] Activity detected, refreshing...')
-                    router.refresh()
-                }
-            )
-            .subscribe()
+        // Refresh on new messages (for unread counts and sorting)
+        const handleNewMessage = () => {
+            console.log('[ChatSidebar] New message detected, refreshing UI...')
+            router.refresh()
+        }
+
+        window.addEventListener('new-message', handleNewMessage)
 
         return () => {
-            supabase.removeChannel(channel)
+            window.removeEventListener('new-message', handleNewMessage)
         }
     }, [router])
+
+    // Optimistically clear unread count for the active conversation
+    useEffect(() => {
+        if (activeId && !localReadIds.has(activeId)) {
+            setLocalReadIds(prev => {
+                const next = new Set(prev)
+                next.add(activeId)
+                return next
+            })
+        }
+    }, [activeId, localReadIds])
+
+    // Clear local cache when conversations prop updates with 0 count (server truth arrived)
+    useEffect(() => {
+        setLocalReadIds(prev => {
+            const next = new Set(prev)
+            conversations.forEach(c => {
+                if (c.unread_count === 0) next.delete(c.id)
+            })
+            return next
+        })
+    }, [conversations])
 
     // Display all active conversations (including groups) followed by contacts who don't have a chat yet
     const displayItems = [
@@ -88,7 +107,12 @@ export default function ChatSidebar({ conversations, contacts, activeId: propAct
 
                         const isGroup = (existingConversation as any)?.is_group
                         const conversationId = existingConversation?.id
-                        const unreadCount = existingConversation?.unread_count || 0
+                        let unreadCount = existingConversation?.unread_count || 0
+
+                        // Optimistic override
+                        if (conversationId && localReadIds.has(conversationId)) {
+                            unreadCount = 0
+                        }
 
                         const isActive = activeId === conversationId || (searchParams.get('employee_id') === targetId)
                         const href = conversationId
@@ -108,6 +132,7 @@ export default function ChatSidebar({ conversations, contacts, activeId: propAct
                                             <EmployeeAvatar
                                                 avatarUrl={employee?.avatar_url || null}
                                                 fullName={employee?.full_name || employee?.fullName || 'User'}
+                                                isOnline={!isGroup && !!employee?.id && isUserOnline(employee.id)}
                                             />
                                             {isGroup && (
                                                 <div className="absolute -bottom-1 -right-1 bg-indigo-600 rounded-full p-1 border-2 border-white">
@@ -130,6 +155,11 @@ export default function ChatSidebar({ conversations, contacts, activeId: propAct
                                             <p className={`text-sm tracking-tight truncate ${unreadCount > 0 ? 'font-bold text-gray-900' : 'font-medium text-gray-700'}`}>
                                                 {employee?.full_name || employee?.fullName || 'Unknown Employee'}
                                             </p>
+                                            {(item as any).isAdminMonitoring && (
+                                                <span className="px-1.5 py-0.5 bg-amber-50 text-amber-600 text-[8px] font-bold rounded uppercase border border-amber-100 ml-1">
+                                                    Monitor
+                                                </span>
+                                            )}
                                             {!isContact && (
                                                 <span className="text-[10px] text-gray-400" suppressHydrationWarning>
                                                     {mounted ? (

@@ -108,6 +108,7 @@ export default async function ChatPage({
                             avatar_url: employee.avatar_url
                         }}
                         recipient={activeConversation?.employee || null}
+                        isAdminMonitoring={activeConversation?.isAdminMonitoring}
                     />
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center p-8 text-center transition-all animate-in fade-in duration-500">

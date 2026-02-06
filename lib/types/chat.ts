@@ -8,6 +8,10 @@ export interface ChatMessage {
     recipient_id: string
     content: string
     is_read: boolean
+    status: 'sent' | 'delivered' | 'seen'
+    sent_at: string
+    delivered_at?: string | null
+    seen_at?: string | null
     type: string
     file_name?: string | null
     file_size?: number | null

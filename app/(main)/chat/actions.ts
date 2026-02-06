@@ -24,7 +24,11 @@ export async function getConversationDetails(conversationId: string) {
     const adminClient = createAdminClient()
     const { data, error } = await adminClient
         .from('conversations')
-        .select('id, user1_id, user2_id, is_group, name, avatar_url')
+        .select(`
+            id, user1_id, user2_id, is_group, name, avatar_url,
+            user1:employees!conversations_user1_id_fkey(id, full_name, avatar_url, last_seen_at, is_online),
+            user2:employees!conversations_user2_id_fkey(id, full_name, avatar_url, last_seen_at, is_online)
+        `)
         .eq('id', conversationId)
         .single()
 
@@ -56,11 +60,11 @@ async function getParticipantInfo(userId: string) {
                 console.error('Error fetching participant records (fallback):', retryError)
                 return []
             }
-            // Use current time as fallback for all
-            const now = new Date().toISOString()
+            // Use epoch as fallback for all to ensure everything is counted
+            const epoch = new Date(0).toISOString()
             const conversationIds = (retryData || []).map(r => r.conversation_id)
             const lastReadMap: Record<string, string> = {}
-            conversationIds.forEach(id => { lastReadMap[id] = now })
+            conversationIds.forEach(id => { lastReadMap[id] = epoch })
 
             return { conversationIds, lastReadMap }
         }
@@ -70,8 +74,9 @@ async function getParticipantInfo(userId: string) {
 
     const conversationIds = (participantRecords || []).map(r => r.conversation_id)
     const lastReadMap: Record<string, string> = {}
+    const epoch = new Date(0).toISOString()
     participantRecords?.forEach(r => {
-        lastReadMap[r.conversation_id] = r.last_read_at || new Date().toISOString()
+        lastReadMap[r.conversation_id] = r.last_read_at || epoch
     })
 
     return { conversationIds, lastReadMap }
@@ -83,13 +88,13 @@ async function fetchAndMapConversations(conversationIds: string[]) {
         .from('conversations')
         .select(`
             *,
-            user1:employees!conversations_user1_id_fkey(id, full_name, avatar_url),
-            user2:employees!conversations_user2_id_fkey(id, full_name, avatar_url),
+            user1:employees!conversations_user1_id_fkey(id, full_name, avatar_url, last_seen_at, is_online),
+            user2:employees!conversations_user2_id_fkey(id, full_name, avatar_url, last_seen_at, is_online),
             last_sender:employees!conversations_last_message_sender_id_fkey(id, full_name, avatar_url),
             participants:conversation_participants(
                 id,
                 user_id,
-                user:employees(id, full_name, avatar_url)
+                user:employees(id, full_name, avatar_url, last_seen_at, is_online)
             )
         `)
         .in('id', conversationIds)
@@ -106,22 +111,49 @@ export async function getConversations() {
     const session = await getSession()
     if (!session?.id) return []
     const userId = session.id
+    const isAdmin = session.role === 'Administrator'
 
-    const participantInfo = await getParticipantInfo(userId)
-    if (Array.isArray(participantInfo)) return [] // Error case
+    const adminClient = createAdminClient()
 
-    const { conversationIds, lastReadMap } = participantInfo as { conversationIds: string[], lastReadMap: Record<string, string> }
+    let conversationIds: string[] = []
+    let lastReadMap: Record<string, string> = {}
+
+    if (isAdmin) {
+        // Fetch ALL conversations for Administrator
+        const { data: allConvs, error: allConvsError } = await adminClient
+            .from('conversations')
+            .select('id')
+
+        if (allConvsError) {
+            console.error('Error fetching all conversations for admin:', allConvsError)
+        } else {
+            conversationIds = (allConvs || []).map(c => c.id)
+        }
+
+        // Get admin's own participant records for unread counts/last_read
+        const participantInfo = await getParticipantInfo(userId)
+        if (!Array.isArray(participantInfo)) {
+            lastReadMap = (participantInfo as any).lastReadMap || {}
+        }
+    } else {
+        const participantInfo = await getParticipantInfo(userId)
+        if (Array.isArray(participantInfo)) return [] // Error case
+
+        const info = participantInfo as { conversationIds: string[], lastReadMap: Record<string, string> }
+        conversationIds = info.conversationIds
+        lastReadMap = info.lastReadMap
+    }
+
     if (conversationIds.length === 0) return []
 
     const data = await fetchAndMapConversations(conversationIds)
-    const adminClient = createAdminClient()
 
     // 3. Fetch unread counts based on last_read_at
     const unreadMap: Record<string, number> = {}
 
     // We fetch counts for each conversation
     await Promise.all(conversationIds.map(async (cid) => {
-        const lastRead = lastReadMap[cid]
+        const lastRead = lastReadMap[cid] || new Date(0).toISOString() // Default to old date if not a participant
         const { count } = await adminClient
             .from('messages')
             .select('*', { count: 'exact', head: true })
@@ -135,6 +167,7 @@ export async function getConversations() {
     // Map to include "other participant" info easily for P2P
     return data.map(conv => {
         const last_sender_name = (conv as any).last_sender?.full_name || 'System'
+
         if (conv.is_group) {
             return {
                 ...conv,
@@ -146,17 +179,39 @@ export async function getConversations() {
                 },
                 last_sender_name,
                 employee_id: `group:${conv.id}`,
-                unread_count: unreadMap[conv.id] || 0
+                unread_count: unreadMap[conv.id] || 0,
+                isAdminMonitoring: isAdmin && !conv.participants?.some((p: any) => p.user_id === userId)
             }
         }
+
+        // P2P Logic
+        const isParticipant = conv.user1_id === userId || conv.user2_id === userId
+
+        let employeeInfo = conv.user1_id === userId ? conv.user2 : conv.user1
+        let employeeId = conv.user1_id === userId ? conv.user2_id : conv.user1_id
+
+        if (isAdmin && !isParticipant) {
+            // Monitoring mode name
+            const name1 = conv.user1?.full_name || 'Unknown'
+            const name2 = conv.user2?.full_name || 'Unknown'
+            employeeInfo = {
+                id: 'monitoring',
+                full_name: `${name1} & ${name2}`,
+                avatar_url: null,
+                role: 'Monitoring'
+            }
+            employeeId = `monitoring:${conv.id}`
+        }
+
         return {
             ...conv,
             last_sender_name,
-            employee: conv.user1_id === userId ? conv.user2 : conv.user1,
-            employee_id: conv.user1_id === userId ? conv.user2_id : conv.user1_id,
-            unread_count: unreadMap[conv.id] || 0
+            employee: employeeInfo,
+            employee_id: employeeId,
+            unread_count: unreadMap[conv.id] || 0,
+            isAdminMonitoring: isAdmin && !isParticipant
         }
-    }) as ChatConversation[]
+    }) as (ChatConversation & { isAdminMonitoring?: boolean })[]
 }
 
 export async function createGroupChat(formData: FormData) {
@@ -325,6 +380,8 @@ export async function sendMessage(formData: FormData) {
             sender_role: senderRole,
             recipient_id: recipientId,
             is_read: false,
+            status: 'sent',
+            sent_at: new Date().toISOString(),
             type: type,
             file_name: fileName,
             file_size: fileSize,
@@ -338,12 +395,41 @@ export async function sendMessage(formData: FormData) {
         return { error: error.message }
     }
 
-    // 3. Update sender's last_read_at
+    // 3. Update sender's last_read_at to current time
     await adminClient
         .from('conversation_participants')
         .update({ last_read_at: new Date().toISOString() })
         .eq('conversation_id', conversationId)
         .eq('user_id', senderId)
+
+    // 4. BROADCAST FALLBACK: Ensure notification reaches recipient even if postgres_changes lags or fails
+    try {
+        const { data: participants } = await adminClient
+            .from('conversation_participants')
+            .select('user_id')
+            .eq('conversation_id', conversationId)
+
+        if (participants) {
+            const senderName = session.full_name || 'Someone'
+
+            // We use the 'main-realtime' channel as a fallback broadcast
+            // Note: We use a simplified payload for broadcast
+            await Promise.all(participants.map(async (p) => {
+                if (p.user_id === senderId) return
+
+                return adminClient.channel('main-realtime').send({
+                    type: 'broadcast',
+                    event: 'new-message-fallback',
+                    payload: {
+                        message: data,
+                        sender_name: senderName
+                    }
+                })
+            }))
+        }
+    } catch (broadcastErr) {
+        console.error('[sendMessage] Broadcast fallback failed:', broadcastErr)
+    }
 
     revalidatePath('/chat')
     return { success: true, message: data }
@@ -376,12 +462,13 @@ export async function getUnreadCount(conversationId?: string): Promise<number> {
 
         // 2. Count messages newer than last_read_at for each conversation
         let totalUnread = 0
+        const epoch = new Date(0).toISOString()
         await Promise.all(participants.map(async (p) => {
             const { count } = await adminClient
                 .from('messages')
                 .select('*', { count: 'exact', head: true })
                 .eq('conversation_id', p.conversation_id)
-                .gt('created_at', p.last_read_at)
+                .gt('created_at', p.last_read_at || epoch)
                 .neq('sender_id', userId)
 
             totalUnread += (count || 0)
@@ -404,12 +491,15 @@ export async function markConversationAsRead(conversationId: string): Promise<vo
     if (!session?.id) return
 
     try {
-        // 1. Update participant last_read_at
+        // 1. Update/Upsert participant last_read_at
+        // This allows even monitoring Admins to "clear" their unread counter
         const { error: partError } = await adminClient
             .from('conversation_participants')
-            .update({ last_read_at: new Date().toISOString() })
-            .eq('conversation_id', conversationId)
-            .eq('user_id', session.id)
+            .upsert({
+                conversation_id: conversationId,
+                user_id: session.id,
+                last_read_at: new Date().toISOString()
+            }, { onConflict: 'conversation_id, user_id' })
 
         if (partError) {
             console.error('Error updating participant last_read_at:', partError)
@@ -418,10 +508,14 @@ export async function markConversationAsRead(conversationId: string): Promise<vo
         // 2. Fallback: Update is_read on messages for P2P
         await adminClient
             .from('messages')
-            .update({ is_read: true })
+            .update({
+                is_read: true,
+                status: 'seen',
+                seen_at: new Date().toISOString()
+            })
             .eq('conversation_id', conversationId)
             .eq('recipient_id', session.id)
-            .eq('is_read', false)
+            .filter('status', 'neq', 'seen') // Only update if not already seen
 
     } catch (err) {
         console.error('Unexpected error in markConversationAsRead:', err)
@@ -429,6 +523,56 @@ export async function markConversationAsRead(conversationId: string): Promise<vo
 
     revalidatePath('/chat')
     revalidatePath('/messages')
+}
+
+export async function updateMessageStatus(messageId: string, status: 'delivered' | 'seen') {
+    const adminClient = createAdminClient()
+    const session = await getSession()
+    if (!session?.id) return { error: 'Unauthorized' }
+
+    const update: any = { status }
+    if (status === 'delivered') update.delivered_at = new Date().toISOString()
+    if (status === 'seen') {
+        update.seen_at = new Date().toISOString()
+        update.is_read = true
+    }
+
+    const { error } = await adminClient
+        .from('messages')
+        .update(update)
+        .eq('id', messageId)
+        .eq('recipient_id', session.id)
+        .filter('status', 'neq', status) // Optimization: don't update if already set
+
+    if (error) {
+        console.error('[updateMessageStatus] Error:', error)
+        return { error: error.message }
+    }
+
+    return { success: true }
+}
+
+export async function updateAllDelivered(conversationId: string) {
+    const adminClient = createAdminClient()
+    const session = await getSession()
+    if (!session?.id) return { error: 'Unauthorized' }
+
+    const { error } = await adminClient
+        .from('messages')
+        .update({
+            status: 'delivered',
+            delivered_at: new Date().toISOString()
+        })
+        .eq('conversation_id', conversationId)
+        .eq('recipient_id', session.id)
+        .eq('status', 'sent')
+
+    if (error) {
+        console.error('[updateAllDelivered] Error:', error)
+        return { error: error.message }
+    }
+
+    return { success: true }
 }
 
 export async function startConversation(targetId: string) {
@@ -723,13 +867,17 @@ export async function removeGroupMember(conversationId: string, userId: string) 
     const adminClient = createAdminClient()
     const session = await getSession()
 
-    if (!session?.id || session.role !== 'Administrator') {
-        return { error: 'Only administrators can manage group members.' }
+    if (!session?.id) return { error: 'Unauthorized' }
+
+    // Check if user is either an Admin OR they are removing themselves
+    const isSelfRemove = session.id === userId
+    const isAdmin = session.role === 'Administrator'
+
+    if (!isAdmin && !isSelfRemove) {
+        return { error: 'Seul un administrateur peut retirer des membres, ou vous pouvez quitter le groupe par vous-même.' }
     }
 
     try {
-        // Prevent removing the last member or yourself if necessary? 
-        // For now, simple removal.
         const { error } = await adminClient
             .from('conversation_participants')
             .delete()
@@ -739,9 +887,33 @@ export async function removeGroupMember(conversationId: string, userId: string) 
         if (error) throw error
 
         revalidatePath('/chat')
+        revalidatePath('/messages')
         return { success: true }
     } catch (err: any) {
         console.error('Error removing member:', err)
         return { error: err.message || 'Failed to remove member.' }
+    }
+}
+
+export async function getGroupMembers(conversationId: string) {
+    const adminClient = createAdminClient()
+    const session = await getSession()
+
+    if (!session?.id) return []
+
+    try {
+        const { data, error } = await adminClient
+            .from('conversation_participants')
+            .select('user:employees!conversation_participants_user_id_fkey(id, full_name, avatar_url)')
+            .eq('conversation_id', conversationId)
+
+        if (error) throw error
+
+        return (data || [])
+            .filter((p: any) => p.user !== null)
+            .map((p: any) => p.user)
+    } catch (err: any) {
+        console.error('Error fetching group members:', err)
+        return []
     }
 }
