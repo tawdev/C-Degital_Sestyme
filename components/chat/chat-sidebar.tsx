@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import EmployeeAvatar from '@/components/employee-avatar'
+import { SafeDate } from '@/components/ui/safe-date'
 import { ChatConversation } from '@/lib/types/chat'
 import { useSearchParams, useParams } from 'next/navigation'
 import UnreadBadge from './unread-badge'
@@ -168,12 +169,11 @@ export default function ChatSidebar({ conversations, contacts, activeId: propAct
                                                 </span>
                                             )}
                                             {!isContact && (
-                                                <span className="text-[10px] text-gray-400" suppressHydrationWarning>
-                                                    {mounted ? (
-                                                        item.last_message_at
-                                                            ? new Date(item.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                                            : new Date(item.created_at).toLocaleDateString()
-                                                    ) : ''}
+                                                <span className="text-[10px] text-gray-400">
+                                                    <SafeDate
+                                                        date={item.last_message_at || item.created_at}
+                                                        formatString={item.last_message_at ? 'HH:mm' : 'dd/MM/yyyy'}
+                                                    />
                                                 </span>
                                             )}
                                         </div>

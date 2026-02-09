@@ -10,11 +10,16 @@ self.addEventListener('push', (event) => {
             body: body || 'You have a new message',
             icon: icon || '/favicon.ico',
             data: data || {},
-            vibrate: [200, 100, 200], // Stronger vibration
+            vibrate: [200, 100, 200, 100, 200], // Stronger vibration
             badge: '/favicon.ico',
-            tag: 'new-message',
+            tag: data?.type === 'call' ? 'incoming-call' : 'new-message',
             renotify: true, // Notify even if a previous notification is still open
-            silent: false
+            silent: false,
+            requireInteraction: data?.type === 'call', // Stay until user interacts for calls
+            actions: data?.type === 'call' ? [
+                { action: 'accept', title: 'Répondre', icon: '/icons/check.png' },
+                { action: 'reject', title: 'Refuser', icon: '/icons/x.png' }
+            ] : []
         }
 
         event.waitUntil(
@@ -28,13 +33,16 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
     event.notification.close()
 
+    const data = event.notification.data
+    const url = data?.url || '/messages'
+
     // Open the app or focus the existing tab
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
             if (clientList.length > 0) {
                 let client = clientList[0]
                 for (let i = 0; i < clientList.length; i++) {
-                    if (clientList[i].focused) {
+                    if (new URL(clientList[i].url).pathname === url) {
                         client = clientList[i]
                         break
                     }
@@ -42,7 +50,7 @@ self.addEventListener('notificationclick', (event) => {
                 return client.focus()
             }
             if (clients.openWindow) {
-                return clients.openWindow('/chat')
+                return clients.openWindow(url)
             }
         })
     )

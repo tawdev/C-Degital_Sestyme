@@ -46,31 +46,31 @@ export default async function EmployeesPage() {
 
     const stats = [
         {
-            name: 'Total Team',
+            name: 'Équipe totale',
             value: employees.length,
             icon: Users,
             color: 'from-blue-500 to-indigo-600',
             bgColor: 'bg-blue-50',
             iconColor: 'text-blue-600',
-            description: 'Registered employees'
+            description: 'Employés inscrits'
         },
         {
-            name: 'Active Staff',
+            name: 'Personnel actif',
             value: employees.length,
             icon: UserPlus,
             color: 'from-emerald-500 to-teal-600',
             bgColor: 'bg-emerald-50',
             iconColor: 'text-emerald-600',
-            description: 'Currently operative'
+            description: 'Actuellement opérationnel'
         },
         {
-            name: 'Specializations',
+            name: 'Spécialisations',
             value: new Set(employees.map(e => e.role).filter(Boolean)).size,
             icon: Briefcase,
             color: 'from-purple-500 to-pink-600',
             bgColor: 'bg-purple-50',
             iconColor: 'text-purple-600',
-            description: 'Unique job roles'
+            description: 'Rôles uniques'
         }
     ]
 
@@ -80,15 +80,15 @@ export default async function EmployeesPage() {
             <div className="relative overflow-hidden bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
                 <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div>
-                        <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">Team Management</h1>
-                        <p className="mt-2 text-lg text-gray-500 font-medium">Oversee your organization's talent and organizational structure.</p>
+                        <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">Gestion de l'équipe</h1>
+                        <p className="mt-2 text-lg text-gray-500 font-medium">Supervisez les talents et la structure organisationnelle de votre entreprise.</p>
                     </div>
                     <Link
                         href="/employees/new"
                         className="inline-flex items-center gap-2 px-6 py-3 bg-gray-900 border border-transparent rounded-xl text-base font-semibold text-white hover:bg-gray-800 transition-all duration-200 shadow-lg shadow-gray-200"
                     >
                         <UserPlus className="h-5 w-5" />
-                        Onboard New Member
+                        Recruter un nouveau membre
                     </Link>
                 </div>
                 <div className="absolute top-0 right-0 mt-[-10%] mr-[-5%] w-64 h-64 bg-blue-50 rounded-full blur-3xl opacity-50"></div>
@@ -119,9 +119,9 @@ export default async function EmployeesPage() {
             {/* Team Table */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="p-6 border-b border-gray-50 flex items-center justify-between">
-                    <h2 className="text-xl font-bold text-gray-900">Personnel Roster</h2>
+                    <h2 className="text-xl font-bold text-gray-900">Registre du personnel</h2>
                     <div className="text-sm text-gray-500 font-medium">
-                        Showing {employees.length} team members
+                        Affichage de {employees.length} membres de l'équipe
                     </div>
                 </div>
                 <div className="overflow-x-auto">
@@ -129,16 +129,16 @@ export default async function EmployeesPage() {
                         <thead className="bg-gray-50/50">
                             <tr>
                                 <th scope="col" className="px-8 py-5 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">
-                                    Team Member
+                                    Membre de l'équipe
                                 </th>
                                 <th scope="col" className="px-8 py-5 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">
-                                    Role & Status
+                                    Rôle & Statut
                                 </th>
                                 <th scope="col" className="px-8 py-5 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">
-                                    Contact Details
+                                    Coordonnées
                                 </th>
                                 <th scope="col" className="px-8 py-5 text-right text-xs font-bold text-gray-500 uppercase tracking-widest">
-                                    Management
+                                    Gestion
                                 </th>
                             </tr>
                         </thead>
@@ -156,7 +156,7 @@ export default async function EmployeesPage() {
                                             </div>
                                             <div>
                                                 <div className="text-base font-bold text-gray-900">{employee.full_name}</div>
-                                                <div className="text-xs font-medium text-gray-400">Joined {new Date(employee.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</div>
+                                                <div className="text-xs font-medium text-gray-400">Inscrit en {new Date(employee.created_at).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })}</div>
                                             </div>
                                         </div>
                                     </td>
@@ -167,11 +167,11 @@ export default async function EmployeesPage() {
                                                     {employee.role}
                                                 </span>
                                             ) : (
-                                                <span className="text-xs font-medium text-gray-400 italic">No assigned role</span>
+                                                <span className="text-xs font-medium text-gray-400 italic">Aucun rôle assigné</span>
                                             )}
                                             <div className="flex items-center gap-1.5">
                                                 <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
-                                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Active Member</span>
+                                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Membre actif</span>
                                             </div>
                                         </div>
                                     </td>
@@ -194,14 +194,14 @@ export default async function EmployeesPage() {
                                             <Link
                                                 href={`/employees/${employee.id}/view`}
                                                 className="p-2.5 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-xl transition-all"
-                                                title="View Profile"
+                                                title="Voir le profil"
                                             >
                                                 <Eye className="h-5 w-5" />
                                             </Link>
                                             <Link
                                                 href={`/employees/${employee.id}`}
                                                 className="p-2.5 text-indigo-400 hover:text-indigo-700 hover:bg-indigo-50 rounded-xl transition-all"
-                                                title="Edit Member"
+                                                title="Modifier le membre"
                                             >
                                                 <Edit className="h-5 w-5" />
                                             </Link>
@@ -210,7 +210,7 @@ export default async function EmployeesPage() {
                                                 <button
                                                     type="submit"
                                                     className="p-2.5 text-red-400 hover:text-red-700 hover:bg-red-50 rounded-xl transition-all"
-                                                    title="Delete Member"
+                                                    title="Supprimer le membre"
                                                 >
                                                     <Trash2 className="h-5 w-5" />
                                                 </button>
@@ -226,14 +226,14 @@ export default async function EmployeesPage() {
                             <div className="bg-gray-50 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6">
                                 <Users className="h-10 w-10 text-gray-200" />
                             </div>
-                            <h3 className="text-xl font-bold text-gray-900 mb-2">No team members yet</h3>
-                            <p className="text-gray-500 max-w-sm mx-auto mb-8">Begin building your organization by onboarding your first personnel asset.</p>
+                            <h3 className="text-xl font-bold text-gray-900 mb-2">Pas encore de membres d'équipe</h3>
+                            <p className="text-gray-500 max-w-sm mx-auto mb-8">Commencez à bâtir votre organisation en recrutant votre premier employé.</p>
                             <Link
                                 href="/employees/new"
                                 className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all font-bold"
                             >
                                 <Plus className="h-5 w-5" />
-                                Onboard Member
+                                Recruter un membre
                             </Link>
                         </div>
                     )}

@@ -5,6 +5,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { ChatMessage, ChatConversation } from '@/lib/types/chat'
 import { getSession } from '@/app/auth/actions'
+import { sendPushNotification } from '@/lib/push-notifications'
+import { createAdminClient as createAdminClientFromLib } from '@/lib/supabase/admin'
 
 export async function getEmployees() {
     const adminClient = createAdminClient()
@@ -339,6 +341,21 @@ export async function sendMessage(conversationId: string, content: string, sende
         .eq('user_id', senderId)
 
     revalidatePath('/messages')
+
+    // 5. Trigger Push Notification for Message
+    if (finalData && recipientId) {
+        const senderName = finalData.sender?.full_name || 'System'
+        sendPushNotification(recipientId, {
+            title: senderName,
+            body: content,
+            data: {
+                type: 'message',
+                conversation_id: conversationId,
+                url: '/messages'
+            }
+        }).catch(err => console.error('[Push] sendMessage trigger error:', err))
+    }
+
     return { success: true, message: finalData }
 }
 
@@ -490,4 +507,20 @@ export async function startConversation(targetId: string) {
     console.log('[startConversation] Successfully created conversation and added participants:', data.id)
     revalidatePath('/messages')
     return data.id
+}
+
+export async function sendCallNotification(recipientId: string, callerName: string, callType: 'audio' | 'video') {
+    const session = await getSession()
+    if (!session?.id) return { error: 'Not authenticated' }
+
+    return sendPushNotification(recipientId, {
+        title: `Appel ${callType} entrant`,
+        body: `${callerName} vous appelle...`,
+        data: {
+            type: 'call',
+            caller_name: callerName,
+            call_type: callType,
+            url: '/messages'
+        }
+    })
 }

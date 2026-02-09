@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { getUnvalidatedNotesCount, getUnvalidatedNotes } from './actions'
 import { Bell } from 'lucide-react'
+import { SafeDate } from '@/components/ui/safe-date'
 
 interface JournalBadgeProps {
     initialCount: number
@@ -169,9 +170,7 @@ export default function JournalBadge({ initialCount, userId, ownedProjectIds }: 
                                             <span className="font-bold text-xs text-indigo-600 group-hover:text-indigo-700">
                                                 {note.projects?.project_name || 'Unknown Project'}
                                             </span>
-                                            <span className="text-[10px] text-gray-400">
-                                                {new Date(note.created_at).toLocaleDateString()}
-                                            </span>
+                                            <SafeDate date={note.created_at} className="text-[10px] text-gray-400" />
                                         </div>
                                         <p className="text-xs text-gray-600 line-clamp-2 mb-2">
                                             {note.content}

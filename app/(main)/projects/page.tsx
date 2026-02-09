@@ -87,8 +87,8 @@ export default async function ProjectsPage({
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900">Projects</h1>
-                    <p className="mt-2 text-gray-600">Manage website projects and track their progress</p>
+                    <h1 className="text-3xl font-bold text-gray-900">Projets</h1>
+                    <p className="mt-2 text-gray-600">Gérez les projets de sites web et suivez leur progression</p>
                 </div>
                 {/* Allow both Employees and Admins to create projects */}
                 {/* Allow only Employees (not Admins) to create projects */}
@@ -98,7 +98,7 @@ export default async function ProjectsPage({
                         className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg font-medium w-full md:w-auto justify-center"
                     >
                         <Plus className="h-5 w-5" />
-                        New Project
+                        Nouveau projet
                     </Link>
                 )}
             </div>
@@ -111,7 +111,7 @@ export default async function ProjectsPage({
                             <Activity className="h-6 w-6 text-blue-600" />
                         </div>
                         <div>
-                            <p className="text-sm text-gray-600">Total Projects</p>
+                            <p className="text-sm text-gray-600">Total des projets</p>
                             <p className="text-2xl font-bold text-gray-900">{projects.length}</p>
                         </div>
                     </div>
@@ -122,7 +122,7 @@ export default async function ProjectsPage({
                             <Activity className="h-6 w-6 text-emerald-600" />
                         </div>
                         <div>
-                            <p className="text-sm text-gray-600">In Progress</p>
+                            <p className="text-sm text-gray-600">En cours</p>
                             <p className="text-2xl font-bold text-gray-900">{activeCount}</p>
                         </div>
                     </div>
@@ -133,7 +133,7 @@ export default async function ProjectsPage({
                             <Clock className="h-6 w-6 text-amber-600" />
                         </div>
                         <div>
-                            <p className="text-sm text-gray-600">Pending</p>
+                            <p className="text-sm text-gray-600">En attente</p>
                             <p className="text-2xl font-bold text-gray-900">{pendingCount}</p>
                         </div>
                     </div>
@@ -144,7 +144,7 @@ export default async function ProjectsPage({
                             <CheckCircle2 className="h-6 w-6 text-blue-600" />
                         </div>
                         <div>
-                            <p className="text-sm text-gray-600">Completed</p>
+                            <p className="text-sm text-gray-600">Terminé</p>
                             <p className="text-2xl font-bold text-gray-900">{completedCount}</p>
                         </div>
                     </div>
@@ -158,22 +158,22 @@ export default async function ProjectsPage({
                         <thead className="bg-gray-50">
                             <tr>
                                 <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                    Project
+                                    Projet
                                 </th>
                                 <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                    Language
+                                    Langue
                                 </th>
                                 <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                    Size
+                                    Taille
                                 </th>
                                 <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                    Assigned To
+                                    Assigné à
                                 </th>
                                 <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                    Status
+                                    Statut
                                 </th>
                                 <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                    Progress
+                                    Progression
                                 </th>
                                 <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
                                     Actions
@@ -234,7 +234,7 @@ export default async function ProjectsPage({
                                             ) : (
                                                 <span className="text-sm text-gray-400 flex items-center gap-2">
                                                     <User className="h-4 w-4" />
-                                                    Non Assigné
+                                                    Non assigné
                                                 </span>
                                             )}
                                         </td>
@@ -243,8 +243,8 @@ export default async function ProjectsPage({
                                                 project.status === 'in_progress' ? 'bg-emerald-100 text-emerald-800' :
                                                     'bg-amber-100 text-amber-800'
                                                 }`}>
-                                                {project.status === 'in_progress' ? 'In Progress' :
-                                                    project.status === 'completed' ? 'Completed' : 'Pending'}
+                                                {project.status === 'in_progress' ? 'En cours' :
+                                                    project.status === 'completed' ? 'Terminé' : 'En attente'}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
@@ -278,7 +278,7 @@ export default async function ProjectsPage({
                                                 <Link
                                                     href={`/projects/${project.id}`}
                                                     className="inline-flex items-center gap-1 px-3 py-1.5 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
-                                                    title="View Details"
+                                                    title="Voir les détails"
                                                 >
                                                     <Eye className="h-4 w-4" />
 
@@ -290,7 +290,7 @@ export default async function ProjectsPage({
                                                         <Link
                                                             href={`/projects/${project.id}/edit`}
                                                             className="inline-flex items-center gap-1 px-3 py-1.5 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 rounded-lg transition-colors"
-                                                            title="Edit Project"
+                                                            title="Modifier le projet"
                                                         >
                                                             <Edit className="h-4 w-4" />
 
@@ -300,7 +300,7 @@ export default async function ProjectsPage({
                                                             <button
                                                                 type="submit"
                                                                 className="inline-flex items-center gap-1 px-3 py-1.5 text-red-600 hover:text-red-900 hover:bg-red-50 rounded-lg transition-colors"
-                                                                title="Delete Project"
+                                                                title="Supprimer le projet"
                                                             >
                                                                 <Trash2 className="h-4 w-4" />
 
@@ -318,14 +318,14 @@ export default async function ProjectsPage({
                     {projects.length === 0 && (
                         <div className="text-center py-12">
                             <Activity className="h-12 w-12 mx-auto text-gray-300 mb-3" />
-                            <p className="text-gray-500 text-sm">No projects found. {!isAdmin && "Create your first project to get started."}</p>
+                            <p className="text-gray-500 text-sm">Aucun projet trouvé. {!isAdmin && "Créez votre premier projet pour commencer."}</p>
                             {!isAdmin && (
                                 <Link
                                     href="/projects/new"
                                     className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
                                 >
                                     <Plus className="h-4 w-4" />
-                                    New Project
+                                    Nouveau projet
                                 </Link>
                             )}
                         </div>

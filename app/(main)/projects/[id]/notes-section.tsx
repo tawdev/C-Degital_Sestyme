@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { MessageSquare, Plus, Edit2, Trash2, CheckCircle2, X, Send } from 'lucide-react'
+import { SafeDate } from '@/components/ui/safe-date'
 import { addNote, updateNote, deleteNote, validateNote } from './actions'
 
 interface Note {
@@ -144,9 +145,12 @@ export default function NotesSection({
                                                 <div className="flex items-center gap-2 text-[10px] text-gray-400 font-bold uppercase tracking-tight">
                                                     <span>{note.author?.role || 'Contributor'}</span>
                                                     <span className="h-1 w-1 bg-gray-300 rounded-full" />
-                                                    <span>{new Date(note.created_at).toLocaleDateString('fr-FR', {
-                                                        day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
-                                                    })}</span>
+                                                    <span>
+                                                        <SafeDate
+                                                            date={note.created_at}
+                                                            formatString="dd MMM yyyy 'à' HH:mm"
+                                                        />
+                                                    </span>
                                                     {note.updated_at !== note.created_at && <span className="text-indigo-400">(édité)</span>}
                                                 </div>
                                             </div>

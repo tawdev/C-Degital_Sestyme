@@ -9,6 +9,7 @@ import { sendMessage, getMessages, markConversationAsRead, deleteMessage, toggle
 import { Send, Loader2, Paperclip, Mic, X, File as FileIcon, Square, CheckCircle2, Download, Trash2, SmilePlus, Users, Settings, Phone, Video as VideoIcon, Check, CheckCheck, Reply, ArrowLeft } from 'lucide-react'
 import EmployeeAvatar from '@/components/employee-avatar'
 import GroupSettingsModal from './group-settings-modal'
+import { SafeLastSeen } from '@/components/ui/safe-last-seen'
 import { useCall } from './call-manager'
 
 interface ChatWindowProps {
@@ -27,17 +28,7 @@ interface ChatWindowProps {
     isAdminMonitoring?: boolean
 }
 
-const formatLastSeen = (date: string | null) => {
-    if (!date) return 'never'
-    const now = new Date()
-    const lastSeen = new Date(date)
-    const diffInSeconds = Math.floor((now.getTime() - lastSeen.getTime()) / 1000)
 
-    if (diffInSeconds < 60) return 'just now'
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`
-    return lastSeen.toLocaleDateString()
-}
 
 export default function ChatWindow({ conversationId, currentUser, recipient, isAdminMonitoring: initialIsMonitoring }: ChatWindowProps) {
     const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -740,7 +731,7 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
                                         </span>
                                     ) : (
                                         <span>
-                                            Last seen {formatLastSeen((otherUser as any).last_seen_at)}
+                                            Last seen <SafeLastSeen date={(otherUser as any).last_seen_at} />
                                         </span>
                                     )}
                                 </p>

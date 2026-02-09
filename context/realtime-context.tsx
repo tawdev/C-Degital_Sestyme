@@ -154,7 +154,7 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
                             endpoint: subscription.endpoint,
                             p256dh,
                             auth
-                        }, { on_conflict: 'user_id, endpoint' })
+                        }, { onConflict: 'user_id,endpoint' })
 
                     if (error) {
                         console.error('[Push] DB Save Error:', error.message, 'Code:', error.code)

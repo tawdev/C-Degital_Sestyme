@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import CallOverlay from '@/components/chat/call-overlay'
+import { sendCallNotification } from '@/app/(main)/messages/actions'
 
 interface CallState {
     isActive: boolean
@@ -37,6 +38,10 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         status: 'idle'
     })
 
+    const ringtoneRef = useRef<HTMLAudioElement | null>(null)
+    const notificationRef = useRef<Notification | null>(null)
+    const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+
     const [isMuted, setIsMuted] = useState(false)
     const [isCameraOff, setIsCameraOff] = useState(false)
     const [localStream, setLocalStream] = useState<MediaStream | null>(null)
@@ -67,6 +72,57 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
             { urls: 'stun:stun2.l.google.com:19302' }
         ],
         iceCandidatePoolSize: 10
+    }
+
+    // Initialize Ringtone
+    useEffect(() => {
+        const ringtone = new Audio('https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3') // Standard calling sound
+        ringtone.loop = true
+        ringtoneRef.current = ringtone
+
+        return () => {
+            ringtone.pause()
+            ringtoneRef.current = null
+        }
+    }, [])
+
+    const playRingtone = () => {
+        if (ringtoneRef.current) {
+            ringtoneRef.current.currentTime = 0
+            ringtoneRef.current.play().catch(err => console.warn('[CallManager] Ringtone play failed:', err))
+        }
+    }
+
+    const stopRingtone = () => {
+        if (ringtoneRef.current) {
+            ringtoneRef.current.pause()
+            ringtoneRef.current.currentTime = 0
+        }
+    }
+
+    const showNotification = (callerName: string, type: string) => {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            const notification = new Notification(`Appel ${type} entrant`, {
+                body: `${callerName} vous appelle...`,
+                icon: '/favicon.ico',
+                tag: 'incoming-call',
+                requireInteraction: true
+            })
+
+            notification.onclick = () => {
+                window.focus()
+                notification.close()
+            }
+
+            notificationRef.current = notification
+        }
+    }
+
+    const hideNotification = () => {
+        if (notificationRef.current) {
+            notificationRef.current.close()
+            notificationRef.current = null
+        }
     }
 
     const broadcastSignal = (signal: string, from: string, to: string, payload: any = {}) => {
@@ -104,6 +160,18 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                                 broadcastSignal('busy', currentUser.id, from)
                                 return prev
                             }
+
+                            // Start Ringtone and Notification
+                            playRingtone()
+                            showNotification(metadata.name, type)
+
+                            // Set auto-timeout (45 seconds)
+                            if (timeoutRef.current) clearTimeout(timeoutRef.current)
+                            timeoutRef.current = setTimeout(() => {
+                                console.log('[CallManager] Call timed out')
+                                rejectCall()
+                            }, 45000)
+
                             return {
                                 isActive: true,
                                 isIncoming: true,
@@ -116,6 +184,10 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                         break
 
                     case 'accept':
+                        stopRingtone()
+                        hideNotification()
+                        if (timeoutRef.current) clearTimeout(timeoutRef.current)
+
                         if (statusRef.current === 'calling') {
                             console.log('[CallManager] Remote accepted the call, starting WebRTC setup...')
                             const targetId = statusRef.current === 'calling' ? callState.recipient?.id : null
@@ -146,6 +218,9 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                     case 'reject':
                     case 'busy':
                     case 'end':
+                        stopRingtone()
+                        hideNotification()
+                        if (timeoutRef.current) clearTimeout(timeoutRef.current)
                         cleanupCall()
                         break
                 }
@@ -270,6 +345,10 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                 metadata: { name: currentUser.full_name, avatar: currentUser.avatar_url }
             })
 
+            // Also trigger Persistent Push Notification
+            sendCallNotification(recipientId, currentUser.full_name, type)
+                .catch(err => console.error('[CallManager] Push notification trigger failed:', err))
+
         } catch (err) {
             console.error('[CallManager] Start call failed:', err)
             cleanupCall()
@@ -378,6 +457,10 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
             const pc = setupPeerConnection(callState.caller.id, true) // Receiver is polite
             stream.getTracks().forEach(track => pc.addTrack(track, stream))
 
+            stopRingtone()
+            hideNotification()
+            if (timeoutRef.current) clearTimeout(timeoutRef.current)
+
             setCallState(prev => ({ ...prev, status: 'calling' }))
             broadcastSignal('accept', currentUser.id, callState.caller!.id)
         } catch (err) {
@@ -394,6 +477,10 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
     }
 
     const endCall = () => {
+        stopRingtone()
+        hideNotification()
+        if (timeoutRef.current) clearTimeout(timeoutRef.current)
+
         const target = callState.isIncoming ? callState.caller?.id : callState.recipient?.id
         if (target) {
             broadcastSignal('end', currentUser.id, target)
@@ -403,6 +490,10 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
 
     const cleanupCall = () => {
         console.log('[CallManager] Cleaning up call')
+        stopRingtone()
+        hideNotification()
+        if (timeoutRef.current) clearTimeout(timeoutRef.current)
+
         if (localStreamRef.current) {
             localStreamRef.current.getTracks().forEach(track => track.stop())
         }
