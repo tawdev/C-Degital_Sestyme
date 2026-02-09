@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professional Video Call Component</title>
+    <style>
+        :root {
+            --primary-color: #6366f1; /* Indigo 500 */
+            --primary-hover: #4f46e5; /* Indigo 600 */
+            --bg-dark: #0f172a; /* Slate 900 */
+            --surface-dark: #1e293b; /* Slate 800 */
+            --text-light: #f8fafc; /* Slate 50 */
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f1f5f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        /* 
+         * Video Call Container 
+         * Main wrapper for the video component
+         */
+        .video-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            aspect-ratio: 16 / 9;
+            background-color: var(--bg-dark);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            transition: all 0.3s ease;
+        }
+
+        /* Video Element */
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Mirror effect for self-view */
+        }
+
+        /* 
+         * Controls Overlay 
+         * Appears on hover or when active
+         */
+        .controls-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 24px;
+            background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 16px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .video-container:hover .controls-overlay {
+            opacity: 1;
+        }
+
+        /* Buttons */
+        .btn {
+            background-color: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-light);
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .btn:hover {
+            background-color: var(--primary-color);
+            transform: scale(1.1);
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+
+        .btn svg {
+            width: 24px;
+            height: 24px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        /* Status Badge */
+        .status-badge {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            padding: 6px 12px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: white;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: #ef4444; /* Red for recording/live */
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        /* Error Message */
+        .error-message {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: var(--bg-dark);
+            color: var(--text-light);
+            text-align: center;
+            padding: 20px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="video-container" id="videoContainer">
+        <!-- Status Indicator -->
+        <div class="status-badge hidden" id="statusBadge">
+            <div class="status-dot"></div>
+            <span>LIVE</span>
+        </div>
+
+        <!-- Main Video Element -->
+        <video id="mainVideo" autoplay playsinline muted></video>
+
+        <!-- Initial Placeholder / Error State -->
+        <div class="error-message" id="placeholder">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 16px; color: #64748b;">
+                <path d="M23 7l-7 5 7 5V7z"></path>
+                <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+            </svg>
+            <h3 style="margin: 0; font-size: 1.25rem;">Camera Access Required</h3>
+            <p style="color: #94a3b8; margin-top: 8px;">Click 'Start Camera' to begin the video feed.</p>
+            <button id="startBtn" style="margin-top: 20px; padding: 10px 24px; background: var(--primary-color); border: none; border-radius: 8px; color: white; font-weight: 600; cursor: pointer;">
+                Start Camera
+            </button>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls-overlay">
+            <!-- Toggle PiP -->
+            <button class="btn" id="pipBtn" title="Toggle Picture-in-Picture">
+                <svg viewBox="0 0 24 24">
+                    <rect x="2" y="5" width="14" height="14" rx="2" ry="2" /> <!-- Main screen -->
+                    <rect x="12" y="11" width="10" height="8" rx="2" ry="2" fill="currentColor" fill-opacity="0.3" transform="scale(0.8) translate(3,3)" /> <!-- Small screen hint -->
+                    <path d="M16 11V7h-4" /> <!-- Arrow hints -->
+                </svg>
+            </button>
+
+            <!-- Toggle Fullscreen -->
+            <button class="btn" id="fullscreenBtn" title="Toggle Fullscreen">
+                <svg viewBox="0 0 24 24">
+                    <path d="M3 8V3h5M21 8V3h-5M3 16v5h5M21 16v5h-5" />
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const video = document.getElementById('mainVideo');
+            const container = document.getElementById('videoContainer');
+            const pipBtn = document.getElementById('pipBtn');
+            const fullscreenBtn = document.getElementById('fullscreenBtn');
+            const startBtn = document.getElementById('startBtn');
+            const placeholder = document.getElementById('placeholder');
+            const statusBadge = document.getElementById('statusBadge');
+
+            // 1. Initialize Camera Feed
+            async function startCamera() {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                    video.srcObject = stream;
+                    
+                    video.onloadedmetadata = () => {
+                        placeholder.classList.add('hidden');
+                        statusBadge.classList.remove('hidden');
+                    };
+                } catch (err) {
+                    console.error("Error accessing camera:", err);
+                    alert("Could not access camera. Please ensure permissions are granted.");
+                }
+            }
+
+            startBtn.addEventListener('click', startCamera);
+
+            // 2. Toggle Picture-in-Picture
+            pipBtn.addEventListener('click', async () => {
+                try {
+                    if (document.pictureInPictureElement) {
+                        await document.exitPictureInPicture();
+                    } else if (document.pictureInPictureEnabled && video.readyState >= 1) { // 1 = HAVE_METADATA
+                        await video.requestPictureInPicture();
+                    } else {
+                        alert("Picture-in-Picture is not supported or video is not ready.");
+                    }
+                } catch (err) {
+                    console.error("PiP Error:", err);
+                }
+            });
+
+            // 3. Toggle Fullscreen
+            fullscreenBtn.addEventListener('click', async () => {
+                try {
+                    if (!document.fullscreenElement) {
+                        await container.requestFullscreen();
+                    } else {
+                        await document.exitFullscreen();
+                    }
+                } catch (err) {
+                    console.error("Fullscreen Error:", err);
+                }
+            });
+
+            // Monitor PiP State Changes
+            video.addEventListener('enterpictureinpicture', () => {
+                console.log('Entered PiP Mode');
+                // You could update UI here, e.g. show a "Playing in PiP" placeholder
+            });
+
+            video.addEventListener('leavepictureinpicture', () => {
+                console.log('Left PiP Mode');
+            });
+
+            // Monitor Fullscreen State Changes
+            document.addEventListener('fullscreenchange', () => {
+                if (document.fullscreenElement) {
+                   container.style.borderRadius = '0';
+                } else {
+                   container.style.borderRadius = '16px';
+                }
+            });
+        });
+    </script>
+</body>
+</html>
