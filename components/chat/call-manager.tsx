@@ -268,7 +268,8 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
 
             if (callerId && receiverId) {
                 await logCall({
-                    conversationId: callConversationIdRef.current, callerId, receiverId, type: state.type, status, duration,
+                    conversationId: callConversationIdRef.current, callerId, receiverId, type: state.type,
+                    status: status === 'rejected' ? 'missed' : status, duration,
                     startedAt: new Date(callStartTimeRef.current).toISOString(),
                     endedAt: new Date().toISOString()
                 })
