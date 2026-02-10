@@ -753,7 +753,7 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation()
-                                    startCall(otherUser!.id, otherUser!.full_name, otherUser!.avatar_url, 'audio')
+                                    startCall(conversationId, otherUser!.id, otherUser!.full_name, otherUser!.avatar_url, 'audio')
                                 }}
                                 className="p-2 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
                                 title="Voice Call"
@@ -763,7 +763,7 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation()
-                                    startCall(otherUser!.id, otherUser!.full_name, otherUser!.avatar_url, 'video')
+                                    startCall(conversationId, otherUser!.id, otherUser!.full_name, otherUser!.avatar_url, 'video')
                                 }}
                                 className="p-2 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
                                 title="Video Call"
@@ -877,7 +877,22 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
                                         )}
 
                                         {/* Original Message Content */}
-                                        {(msg as any).type === 'image' ? (
+                                        {(msg as any).type === 'call_audio' || (msg as any).type === 'call_video' ? (
+                                            <div className="flex items-center gap-3 py-1">
+                                                <div className={`p-2 rounded-full ${(msg as any).content === 'Appel manqué' ? 'bg-red-50 text-red-500' : (msg.sender_id === currentUser.id ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500')}`}>
+                                                    {(msg as any).type === 'call_audio' ? <Phone className="w-4 h-4" /> : <VideoIcon className="w-4 h-4" />}
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <p className="text-sm font-bold">
+                                                        {(msg as any).type === 'call_audio' ? 'Appel audio' : 'Appel vidéo'}
+                                                        {(msg as any).content === 'Appel manqué' ? ' manqué' : ''}
+                                                    </p>
+                                                    {(msg as any).content !== 'Appel manqué' && (
+                                                        <p className="text-[10px] opacity-80">{(msg as any).content}</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ) : (msg as any).type === 'image' ? (
                                             <div className="mb-1 relative group/image">
                                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                                 <a href={msg.content} target="_blank" rel="noopener noreferrer" className="block cursor-zoom-in">

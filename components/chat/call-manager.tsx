@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { createClient } from '@/lib/supabase/client'
 import CallOverlay from '@/components/chat/call-overlay'
 import { sendCallNotification } from '@/app/(main)/messages/actions'
+import { logCall } from '@/app/(main)/chat/actions'
 
 interface CallState {
     isActive: boolean
@@ -12,10 +13,13 @@ interface CallState {
     caller: { id: string; name: string; avatar: string | null } | null
     recipient: { id: string; name: string; avatar: string | null } | null
     status: 'idle' | 'calling' | 'ringing' | 'connected' | 'ended'
+    videoUpgradeRequest: null | 'pending' | 'accepted' | 'rejected'
+    videoUpgradeInitiator: string | null
+    conversationId: string | null
 }
 
 interface CallContextType {
-    startCall: (recipientId: string, recipientName: string, recipientAvatar: string | null, type: 'audio' | 'video') => void
+    startCall: (conversationId: string, recipientId: string, recipientName: string, recipientAvatar: string | null, type: 'audio' | 'video') => void
     acceptCall: () => void
     rejectCall: () => void
     endCall: () => void
@@ -24,6 +28,9 @@ interface CallContextType {
     toggleCamera: () => void
     isMuted: boolean
     isCameraOff: boolean
+    requestVideoUpgrade: () => void
+    acceptVideoUpgrade: () => void
+    rejectVideoUpgrade: () => void
 }
 
 const CallContext = createContext<CallContextType | undefined>(undefined)
@@ -35,12 +42,21 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         type: 'video',
         caller: null,
         recipient: null,
-        status: 'idle'
+        status: 'idle',
+        videoUpgradeRequest: null,
+        videoUpgradeInitiator: null,
+        conversationId: null
     })
+
+    // Call Logging Refs
+    const callStartTimeRef = useRef<number | null>(null)
+    const callAnswerTimeRef = useRef<number | null>(null)
+    const callConversationIdRef = useRef<string | null>(null)
 
     const ringtoneRef = useRef<HTMLAudioElement | null>(null)
     const notificationRef = useRef<Notification | null>(null)
     const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+    const [needsInteraction, setNeedsInteraction] = useState(false)
 
     const [isMuted, setIsMuted] = useState(false)
     const [isCameraOff, setIsCameraOff] = useState(false)
@@ -76,27 +92,50 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
 
     // Initialize Ringtone
     useEffect(() => {
-        const ringtone = new Audio('https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3') // Standard calling sound
+        // Using custom troll sound effect as requested
+        const ringtone = new Audio('/sounds/ringtone_custom.mp3?v=500')
         ringtone.loop = true
+        ringtone.volume = 1.0
         ringtoneRef.current = ringtone
 
+        // Interaction listener to "unlock" audio and play if pending
+        const handleInteraction = () => {
+            if (statusRef.current === 'ringing') {
+                console.log('[CallManager] User interacted, attempting to play if needed')
+                ringtone.play()
+                    .then(() => setNeedsInteraction(false))
+                    .catch(e => console.warn('[CallManager] Play after interaction failed:', e))
+            }
+        }
+
+        window.addEventListener('click', handleInteraction, { once: true })
+        window.addEventListener('touchstart', handleInteraction, { once: true })
+
         return () => {
+            window.removeEventListener('click', handleInteraction)
+            window.removeEventListener('touchstart', handleInteraction)
             ringtone.pause()
             ringtoneRef.current = null
         }
-    }, [])
+    }, []) // Run once on mount
 
     const playRingtone = () => {
         if (ringtoneRef.current) {
+            console.log('[CallManager] Attempting to play ringtone')
             ringtoneRef.current.currentTime = 0
-            ringtoneRef.current.play().catch(err => console.warn('[CallManager] Ringtone play failed:', err))
+            ringtoneRef.current.play().catch(err => {
+                console.warn('[CallManager] Autoplay blocked, waiting for interaction:', err)
+                setNeedsInteraction(true)
+            })
         }
     }
 
     const stopRingtone = () => {
         if (ringtoneRef.current) {
+            console.log('[CallManager] Stopping ringtone')
             ringtoneRef.current.pause()
             ringtoneRef.current.currentTime = 0
+            setNeedsInteraction(false)
         }
     }
 
@@ -175,12 +214,20 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                             return {
                                 isActive: true,
                                 isIncoming: true,
-                                type,
+                                type: type as 'audio' | 'video',
                                 caller: { id: from, name: metadata.name, avatar: metadata.avatar },
                                 recipient: { id: currentUser.id, name: currentUser.full_name, avatar: currentUser.avatar_url },
-                                status: 'ringing'
-                            }
+                                status: 'ringing',
+                                videoUpgradeRequest: null,
+                                videoUpgradeInitiator: null,
+                                conversationId: payload.conversationId
+                            } as CallState
                         })
+
+                        // Tracking for logging
+                        callConversationIdRef.current = payload.conversationId
+                        callStartTimeRef.current = Date.now()
+                        callAnswerTimeRef.current = null
                         break
 
                     case 'accept':
@@ -190,7 +237,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
 
                         if (statusRef.current === 'calling') {
                             console.log('[CallManager] Remote accepted the call, starting WebRTC setup...')
-                            const targetId = statusRef.current === 'calling' ? callState.recipient?.id : null
+                            callAnswerTimeRef.current = Date.now()
                             if (from) {
                                 const pc = setupPeerConnection(from, false) // Caller is impolite
                                 // Add tracks to trigger negotiation
@@ -213,6 +260,48 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
 
                     case 'ice-candidate':
                         await handleIceCandidate(payload)
+                        break
+
+                    case 'upgrade-to-video-request':
+                    case 'video-upgrade-request':
+                        console.log('[CallManager] Received video upgrade request from', from)
+                        setCallState(prev => ({
+                            ...prev,
+                            videoUpgradeRequest: 'pending',
+                            videoUpgradeInitiator: from
+                        }))
+                        break
+
+                    case 'upgrade-to-video-accept':
+                    case 'upgrade-to-video-reject':
+                    case 'video-upgrade-response':
+                        const status = signal === 'upgrade-to-video-accept' ? 'accepted' :
+                            signal === 'upgrade-to-video-reject' ? 'rejected' :
+                                payload.status || (payload.accepted ? 'accepted' : 'rejected')
+
+                        if (status === 'accepted' || status === 'accepted') {
+                            console.log('[CallManager] Video upgrade accepted by remote user')
+                            setCallState(prev => ({
+                                ...prev,
+                                videoUpgradeRequest: 'accepted'
+                            }))
+                            // Both sides need to add their video track
+                            await addVideoTrackToCall()
+                        } else {
+                            console.log('[CallManager] Video upgrade rejected by remote user')
+                            setCallState(prev => ({
+                                ...prev,
+                                videoUpgradeRequest: 'rejected',
+                                videoUpgradeInitiator: null
+                            }))
+                            // Reset after 3 seconds
+                            setTimeout(() => {
+                                setCallState(prev => ({
+                                    ...prev,
+                                    videoUpgradeRequest: null
+                                }))
+                            }, 3000)
+                        }
                         break
 
                     case 'reject':
@@ -316,10 +405,15 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         return pc
     }
 
-    const startCall = async (recipientId: string, recipientName: string, recipientAvatar: string | null, type: 'audio' | 'video') => {
+    const startCall = async (conversationId: string, recipientId: string, recipientName: string, recipientAvatar: string | null, type: 'audio' | 'video') => {
         try {
-            console.log(`[CallManager] Starting ${type} call to ${recipientId}`)
+            console.log(`[CallManager] Starting ${type} call to ${recipientId} in convo ${conversationId}`)
             cleanupCall()
+
+            // Reset tracking
+            callConversationIdRef.current = conversationId
+            callStartTimeRef.current = Date.now()
+            callAnswerTimeRef.current = null
 
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: type === 'video',
@@ -332,16 +426,20 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
             setCallState({
                 isActive: true,
                 isIncoming: false,
-                type,
+                type: type as 'audio' | 'video',
                 caller: null,
                 recipient: { id: recipientId, name: recipientName, avatar: recipientAvatar },
-                status: 'calling'
+                status: 'calling',
+                videoUpgradeRequest: null,
+                videoUpgradeInitiator: null,
+                conversationId
             })
 
             // IMPORTANT: We do NOT setup PC here yet. 
             // We wait for the 'accept' signal to ensure the other side is ready.
             broadcastSignal('initiate', currentUser.id, recipientId, {
                 type,
+                conversationId,
                 metadata: { name: currentUser.full_name, avatar: currentUser.avatar_url }
             })
 
@@ -462,6 +560,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
             if (timeoutRef.current) clearTimeout(timeoutRef.current)
 
             setCallState(prev => ({ ...prev, status: 'calling' }))
+            callAnswerTimeRef.current = Date.now()
             broadcastSignal('accept', currentUser.id, callState.caller!.id)
         } catch (err) {
             console.error('[CallManager] Accept call failed:', err)
@@ -511,8 +610,45 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         isSettingRemoteAnswerPending.current = false
         pendingCandidates.current = []
 
+        // --- LOGGING LOGIC ---
+        if (callStartTimeRef.current && callConversationIdRef.current) {
+            const now = Date.now()
+            const startedAt = new Date(callStartTimeRef.current).toISOString()
+            const endedAt = new Date(now).toISOString()
+
+            const wasConnected = callAnswerTimeRef.current !== null || statusRef.current === 'connected'
+            const status = wasConnected ? 'answered' : 'missed'
+            const duration = wasConnected ? Math.floor((now - (callAnswerTimeRef.current || callStartTimeRef.current)) / 1000) : 0
+
+            const callerId = callState.isIncoming ? callState.caller?.id : currentUser.id
+            const receiverId = callState.isIncoming ? currentUser.id : callState.recipient?.id
+
+            if (callerId && receiverId) {
+                console.log(`[CallManager] Logging call: ${status}, duration: ${duration}s`)
+                logCall({
+                    conversationId: callConversationIdRef.current,
+                    callerId,
+                    receiverId,
+                    type: callState.type,
+                    status,
+                    duration,
+                    startedAt,
+                    endedAt
+                }).catch(err => console.error('[CallManager] Failed to log call:', err))
+            }
+        }
+
+        // Reset tracking
+        callStartTimeRef.current = null
+        callAnswerTimeRef.current = null
+        callConversationIdRef.current = null
+        // --- END LOGGING ---
+
         setCallState({
-            isActive: false, isIncoming: false, type: 'video', caller: null, recipient: null, status: 'idle'
+            isActive: false, isIncoming: false, type: 'video', caller: null, recipient: null, status: 'idle',
+            videoUpgradeRequest: null,
+            videoUpgradeInitiator: null,
+            conversationId: null
         })
         setIsMuted(false)
         setIsCameraOff(false)
@@ -540,10 +676,113 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         }
     }
 
+    // Video Upgrade Functions
+    const requestVideoUpgrade = () => {
+        if (callState.type !== 'audio' || callState.status !== 'connected') {
+            console.warn('[CallManager] Cannot request video upgrade: not in audio call or not connected')
+            return
+        }
+
+        const target = callState.isIncoming ? callState.caller?.id : callState.recipient?.id
+        if (!target) return
+
+        console.log('[CallManager] Requesting video upgrade')
+        setCallState(prev => ({
+            ...prev,
+            videoUpgradeRequest: 'pending',
+            videoUpgradeInitiator: currentUser.id
+        }))
+
+        broadcastSignal('video-upgrade-request', currentUser.id, target)
+        // Also send old name for compatibility with non-refreshed clients
+        setTimeout(() => broadcastSignal('upgrade-to-video-request', currentUser.id, target), 100)
+    }
+
+    const acceptVideoUpgrade = async () => {
+        if (!callState.videoUpgradeInitiator) return
+
+        try {
+            console.log('[CallManager] Accepting video upgrade request')
+
+            // 1. First add our own video track
+            await addVideoTrackToCall()
+
+            // 2. Notify the requester that we accepted
+            broadcastSignal('video-upgrade-response', currentUser.id, callState.videoUpgradeInitiator, { accepted: true })
+
+            // 3. Update local state
+            setCallState(prev => ({
+                ...prev,
+                videoUpgradeRequest: 'accepted',
+                videoUpgradeInitiator: null
+            }))
+        } catch (err) {
+            console.error('[CallManager] Accept video upgrade failed:', err)
+            rejectVideoUpgrade()
+        }
+    }
+
+    const rejectVideoUpgrade = () => {
+        if (!callState.videoUpgradeInitiator) return
+
+        console.log('[CallManager] Rejecting video upgrade request')
+        broadcastSignal('video-upgrade-response', currentUser.id, callState.videoUpgradeInitiator, { accepted: false })
+
+        setCallState(prev => ({
+            ...prev,
+            videoUpgradeRequest: null,
+            videoUpgradeInitiator: null
+        }))
+    }
+
+    const addVideoTrackToCall = async () => {
+        try {
+            console.log('[CallManager] Attempting to add video track to existing call')
+
+            // Check if we already have a video track active to avoid duplicates
+            if (localStreamRef.current?.getVideoTracks().length! > 0) {
+                console.log('[CallManager] Video track already exists, skipping getUserMedia')
+                return
+            }
+
+            const videoStream = await navigator.mediaDevices.getUserMedia({
+                video: true
+            })
+
+            const videoTrack = videoStream.getVideoTracks()[0]
+            if (!videoTrack) throw new Error('No video track obtained')
+
+            // Update local stream and ref
+            const currentStream = localStreamRef.current || new MediaStream()
+            currentStream.addTrack(videoTrack)
+            localStreamRef.current = currentStream
+            setLocalStream(new MediaStream(currentStream.getTracks()))
+
+            // Add track to PeerConnection
+            if (peerConnection.current) {
+                console.log('[CallManager] Adding track to RTCPeerConnection')
+                peerConnection.current.addTrack(videoTrack, currentStream)
+                // This triggers onnegotiationneeded automatically
+            }
+
+            setCallState(prev => ({
+                ...prev,
+                type: 'video',
+                videoUpgradeRequest: null
+            }))
+
+            console.log('[CallManager] Video track added and call type updated to video')
+        } catch (err) {
+            console.error('[CallManager] Error in addVideoTrackToCall:', err)
+            throw err
+        }
+    }
+
     return (
         <CallContext.Provider value={{
             startCall, acceptCall, rejectCall, endCall,
-            callState, toggleMute, toggleCamera, isMuted, isCameraOff
+            callState, toggleMute, toggleCamera, isMuted, isCameraOff,
+            requestVideoUpgrade, acceptVideoUpgrade, rejectVideoUpgrade
         }}>
             {children}
             {callState.isActive && (
@@ -558,6 +797,10 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                     onCamera={toggleCamera}
                     isMuted={isMuted}
                     isCameraOff={isCameraOff}
+                    onRequestVideoUpgrade={requestVideoUpgrade}
+                    onAcceptVideoUpgrade={acceptVideoUpgrade}
+                    onRejectVideoUpgrade={rejectVideoUpgrade}
+                    currentUserId={currentUser.id}
                 />
             )}
         </CallContext.Provider>

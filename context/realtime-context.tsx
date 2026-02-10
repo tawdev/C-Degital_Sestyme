@@ -30,12 +30,12 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
 
     // Initialize notification sound
     useEffect(() => {
-        // High-quality notification sound as a Base64 data URI
-        const pingBase64 = 'data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA/wAAAACAFG7bgAAAAAAAANuWAAAAAAAAAAEAAA6F//7kMQZAAAAGkAaACAAAnQBoAIAAAnQBj7v8AAAAA//uQxBkAAADYAYAAAAAC2AGAAAAAAEY+7/AAAAAP/7kMQZAAAAlgBgAAAAAJYAYAAAAAARj7v8AAAAA/+5DEGQAAACYAYAAAAACWAGAAAAAAEY+7/AAAAAD'
+        // High-quality notification sound as a Base64 data URI (Short Ping/Pop)
+        const pingBase64 = 'data:audio/mp3;base64,SUQzBAAAAAABAFRYWFgAAAASAAADbWFqb3JfYnJhbmQAZGFzaABUWFhYAAAAEQAAA21pbm9yX3ZlcnNpb24AMABUWFhYAAAAHAAAA2NvbXBhdGlibGVfYnJhbmRzAGlzbzZtcDQxAFRTU0UAAAAPAAADTGF2ZjYwLjMuMTAwAAAAAAAAAAAAAAD/+000OAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA/wAAAACAFG7bgAAAAAAAANuWAAAAAAAAAAEAAA6F//7kMQZAAAAGkAaACAAAnQBoAIAAAnQBj7v8AAAAA//uQxBkAAADYAYAAAAAC2AGAAAAAAEY+7/AAAAAP/7kMQZAAAAlgBgAAAAAJYAYAAAAAARj7v8AAAAA/+5DEGQAAACYAYAAAAACWAGAAAAAAEY+7/AAAAAD'
         const audio = new Audio(pingBase64)
         audio.preload = 'auto'
-        audio.onerror = (e) => {
-            console.warn('[Realtime] Failed to load notification sound fallback.', e)
+        audio.onerror = () => {
+            // Silently ignore if failed, better than console spam
         }
         audioRef.current = audio
     }, [])

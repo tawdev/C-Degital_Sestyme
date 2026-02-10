@@ -616,6 +616,120 @@ export async function sendMessage(formData: FormData) {
     return { success: true, message: finalData }
 }
 
+export async function logCall(payload: {
+    conversationId: string;
+    callerId: string;
+    receiverId: string;
+    type: 'audio' | 'video';
+    status: 'missed' | 'answered';
+    duration?: number;
+    startedAt: string;
+    endedAt?: string;
+}) {
+    const adminClient = createAdminClient()
+
+    try {
+        // 1. Log detailed call
+        const { data: log, error: logError } = await adminClient
+            .from('call_logs')
+            .insert({
+                conversation_id: payload.conversationId,
+                caller_id: payload.callerId,
+                receiver_id: payload.receiverId,
+                type: payload.type,
+                status: payload.status,
+                duration: payload.duration,
+                started_at: payload.startedAt,
+                ended_at: payload.endedAt
+            })
+            .select()
+            .single()
+
+        if (logError) {
+            console.error('[logCall] Error inserting log:', logError)
+            // Continue to message even if log fails? No, better to know.
+            // Actually, let's keep going to at least show it in chat.
+        }
+
+        // 2. Format content for chat message
+        let content = ''
+        if (payload.status === 'missed') {
+            content = 'Appel manqué'
+        } else {
+            const d = payload.duration || 0
+            if (d < 60) {
+                content = `${d} secs`
+            } else {
+                const mins = Math.floor(d / 60)
+                const remainingSecs = d % 60
+                content = remainingSecs > 0 ? `${mins} min ${remainingSecs} s` : `${mins} mins`
+            }
+        }
+
+        // 3. Get sender role for the message
+        const { data: employee } = await adminClient
+            .from('employees')
+            .select('role')
+            .eq('id', payload.callerId)
+            .single()
+
+        const senderRole = employee?.role === 'Administrator' ? 'admin' : 'employee'
+
+        // 4. Insert message into chat
+        const messageType = payload.type === 'video' ? 'call_video' : 'call_audio'
+        const { data: insertedMsg, error: msgError } = await adminClient
+            .from('messages')
+            .insert({
+                conversation_id: payload.conversationId,
+                sender_id: payload.callerId,
+                sender_role: senderRole,
+                recipient_id: payload.receiverId,
+                content: content,
+                type: messageType,
+                status: 'sent',
+                is_read: false,
+                created_at: new Date().toISOString()
+            })
+            .select(`
+                *,
+                sender:employees!messages_sender_id_fkey(id, full_name, avatar_url)
+            `)
+            .single()
+
+        if (msgError) console.error('[logCall] Message insert error:', msgError)
+
+        // 5. Broadcast to participants for real-time update
+        if (insertedMsg) {
+            const { data: participants } = await adminClient
+                .from('conversation_participants')
+                .select('user_id')
+                .eq('conversation_id', payload.conversationId)
+
+            if (participants) {
+                const senderName = insertedMsg.sender?.full_name || 'Système'
+                await Promise.all(participants.map(async (p) => {
+                    // We broadcast to everyone including sender for UI consistency
+                    return adminClient.channel('main-realtime').send({
+                        type: 'broadcast',
+                        event: 'new-message-fallback',
+                        payload: {
+                            message: insertedMsg,
+                            sender_name: senderName
+                        }
+                    })
+                }))
+            }
+        }
+
+        revalidatePath('/chat')
+        revalidatePath('/messages')
+        return { success: true, logId: log?.id }
+    } catch (err: any) {
+        console.error('[logCall] Error in logCall:', err)
+        return { error: err.message }
+    }
+}
+
 /**
  * PRODUCTION: Fetches exact unread count for the current user.
  * Uses head: true to avoid fetching data, making it O(1) with the database index.
