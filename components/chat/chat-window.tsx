@@ -821,7 +821,7 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
                         <div
                             key={msg.id}
                             id={`msg-${msg.id}`}
-                            className={`flex ${msg.sender_id === currentUser.id ? 'justify-end' : 'justify-start'} group transition-all duration-300 mb-4 gap-2`}
+                            className={`flex ${msg.sender_id === currentUser.id ? 'justify-end' : 'justify-start'} group transition-all duration-300 mb-5 gap-3`}
                         >
                             {/* Avatar for others in group chats */}
                             {isGroup && msg.sender_id !== currentUser.id && (
@@ -847,9 +847,9 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
                                 <div className={`flex flex-col ${msg.sender_id === currentUser.id ? 'items-end' : 'items-start'} gap-1`}>
 
                                     {/* Bubble (now containing both reply and content) */}
-                                    <div className={`relative px-4 py-2 shadow-sm max-w-full ${msg.sender_id === currentUser.id
-                                        ? 'bg-indigo-600 text-white rounded-2xl rounded-tr-sm'
-                                        : 'bg-white text-gray-900 rounded-2xl rounded-tl-sm border border-gray-100'
+                                    <div className={`relative px-4 py-2.5 shadow-md max-w-full transition-all duration-200 ${msg.sender_id === currentUser.id
+                                        ? 'bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-[20px] rounded-tr-[4px] shadow-indigo-200/50'
+                                        : 'bg-white text-gray-900 rounded-[20px] rounded-tl-[4px] border border-gray-100 shadow-sm'
                                         }`}>
 
                                         {/* Quote (Reply) rendering - Now inside bubble at the top */}
@@ -928,22 +928,22 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
                                                 </button>
                                             </div>
                                         ) : (
-                                            <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                                            <p className="text-[15px] leading-[22px] whitespace-pre-wrap font-medium tracking-tight">{msg.content}</p>
                                         )}
 
-                                        <div className="flex items-center justify-end gap-1 mt-1">
-                                            <p className={`text-[10px] ${msg.sender_id === currentUser.id ? 'text-indigo-100' : 'text-gray-400'}`}>
+                                        <div className="flex items-center justify-end gap-1.5 mt-1.5 select-none">
+                                            <p className={`text-[10px] font-semibold tracking-wider uppercase ${msg.sender_id === currentUser.id ? 'text-indigo-100/80' : 'text-gray-400'}`}>
                                                 {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                             </p>
 
                                             {msg.sender_id === currentUser.id && (
-                                                <div className="flex items-center ml-1">
+                                                <div className="flex items-center">
                                                     {(statusUpdates[msg.id] || msg.status) === 'seen' ? (
-                                                        <CheckCheck className="w-3 h-3 text-cyan-300" />
+                                                        <CheckCheck className="w-3.5 h-3.5 text-cyan-300 drop-shadow-sm" />
                                                     ) : (statusUpdates[msg.id] || msg.status) === 'delivered' ? (
-                                                        <CheckCheck className="w-3 h-3 text-indigo-200" />
+                                                        <CheckCheck className="w-3.5 h-3.5 text-indigo-200/90" />
                                                     ) : (
-                                                        <Check className="w-3 h-3 text-indigo-200" />
+                                                        <Check className="w-3.5 h-3.5 text-indigo-200/90" />
                                                     )}
                                                 </div>
                                             )}
@@ -975,8 +975,8 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
 
                                     {/* Reaction Picker, Delete & Reply (Outside Bubble, Inside Relative Wrapper) */}
                                     {!isAdminMonitoring && (
-                                        <div className={`opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center absolute top-full left-0 right-0 z-50 ${msg.sender_id === currentUser.id ? 'justify-end' : 'justify-start'} pt-2 pointer-events-auto`}>
-                                            <div className={`bg-white/95 backdrop-blur-sm shadow-xl rounded-full border border-gray-100 flex items-center p-1.5 gap-1 whitespace-nowrap ${msg.sender_id === currentUser.id ? 'flex-row-reverse' : 'flex-row'}`}>
+                                        <div className={`opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center absolute top-1/2 -translate-y-1/2 z-50 ${msg.sender_id === currentUser.id ? 'right-full mr-2' : 'left-full ml-2'} pointer-events-none`}>
+                                            <div className={`bg-white/95 backdrop-blur-sm shadow-xl rounded-full border border-gray-100 flex items-center p-1.5 gap-1 whitespace-nowrap ${msg.sender_id === currentUser.id ? 'flex-row' : 'flex-row'} pointer-events-auto`}>
                                                 {emojis.map(emoji => (
                                                     <button
                                                         key={emoji}
