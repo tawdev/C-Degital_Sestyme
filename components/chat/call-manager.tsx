@@ -92,8 +92,8 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
 
     // Initialize Ringtone
     useEffect(() => {
-        // Using custom troll sound effect as requested
-        const ringtone = new Audio('/sounds/ringtone_custom.mp3?v=500')
+        // Using helpfully provided new custom troll sound effect
+        const ringtone = new Audio('/sounds/ringtone_custom_v2.mp3?v=600')
         ringtone.loop = true
         ringtone.volume = 1.0
         ringtoneRef.current = ringtone
