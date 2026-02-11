@@ -238,7 +238,7 @@ export default function CallOverlay({
                             {state.participants.map((p: any) => {
                                 const isLocal = p.id === currentUserId
                                 const stream = isLocal ? localStream : remoteStreams[p.id]
-                                const hasVideo = stream?.getVideoTracks().length > 0
+                                const hasVideo = !!stream && stream.getVideoTracks().length > 0
                                 const isVideoOff = isLocal ? isCameraOff : p.isCameraOff
                                 const isAudioMuted = isLocal ? isMuted : p.isMuted
 
