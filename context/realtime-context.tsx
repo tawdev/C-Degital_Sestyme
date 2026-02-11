@@ -3,6 +3,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { RealtimePresenceState } from '@supabase/supabase-js'
+import { useAudio } from './audio-context'
+import { useNotifications } from './notification-context'
 
 export type PresenceState = {
     user_id: string
@@ -14,8 +16,6 @@ interface RealtimeContextType {
     isUserOnline: (userId: string) => boolean
     activeConversationId: string | null
     setActiveConversationId: (id: string | null) => void
-    notificationPermission: NotificationPermission
-    requestPermission: () => Promise<void>
 }
 
 const RealtimeContext = createContext<RealtimeContextType | undefined>(undefined)
@@ -26,19 +26,9 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
     const activeConvRef = useRef<string | null>(null)
     const handledMessagesRef = useRef<Set<string>>(new Set())
     const supabase = createClient()
-    const audioRef = useRef<HTMLAudioElement | null>(null)
+    const { playNotificationSound } = useAudio()
+    const { showNotification } = useNotifications()
 
-    // Initialize notification sound
-    useEffect(() => {
-        // High-quality notification sound as a Base64 data URI (Short Ping/Pop)
-        const pingBase64 = 'data:audio/mp3;base64,SUQzBAAAAAABAFRYWFgAAAASAAADbWFqb3JfYnJhbmQAZGFzaABUWFhYAAAAEQAAA21pbm9yX3ZlcnNpb24AMABUWFhYAAAAHAAAA2NvbXBhdGlibGVfYnJhbmRzAGlzbzZtcDQxAFRTU0UAAAAPAAADTGF2ZjYwLjMuMTAwAAAAAAAAAAAAAAD/+000OAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA/wAAAACAFG7bgAAAAAAAANuWAAAAAAAAAAEAAA6F//7kMQZAAAAGkAaACAAAnQBoAIAAAnQBj7v8AAAAA//uQxBkAAADYAYAAAAAC2AGAAAAAAEY+7/AAAAAP/7kMQZAAAAlgBgAAAAAJYAYAAAAAARj7v8AAAAA/+5DEGQAAACYAYAAAAACWAGAAAAAAEY+7/AAAAAD'
-        const audio = new Audio(pingBase64)
-        audio.preload = 'auto'
-        audio.onerror = () => {
-            // Silently ignore if failed, better than console spam
-        }
-        audioRef.current = audio
-    }, [])
     const updateDbStatus = useCallback(async (online: boolean) => {
         if (!currentUserId) return
         try {
@@ -58,43 +48,12 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
         activeConvRef.current = activeConversationId
     }, [activeConversationId])
 
-    const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default')
-
     // Sync DB status on mount/unmount
     useEffect(() => {
         updateDbStatus(true)
         return () => { updateDbStatus(false) }
     }, [updateDbStatus])
 
-    const showNotification = useCallback((payload: any) => {
-        if (typeof Notification !== 'undefined') {
-            console.log('[Realtime] showNotification called. State:', Notification.permission, 'Payload:', payload)
-            if (Notification.permission === 'granted') {
-                const { sender_name, content } = payload
-                try {
-                    const n = new Notification(sender_name, {
-                        body: content,
-                        tag: 'new-message',
-                        requireInteraction: false,
-                        silent: false // Explicitly allow sound
-                    })
-                    n.onclick = () => {
-                        window.focus()
-                        n.close()
-                    }
-                    console.log('[Realtime] Notification object created successfully')
-                } catch (err) {
-                    console.error('[Realtime] Browser notification constructor failed:', err)
-                }
-            } else {
-                console.warn('[Realtime] Notification suppressed: Permission is', Notification.permission)
-                if (Notification.permission === 'default') {
-                    console.log('[Realtime] Prompting for permission again...')
-                    Notification.requestPermission()
-                }
-            }
-        }
-    }, [])
 
     // Web Push Registration
     useEffect(() => {
@@ -175,17 +134,6 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
 
         console.log('[Realtime] Starting main-realtime channel for user:', currentUserId)
 
-        // Sync Notification Permission state (Client-side Only)
-        if (typeof Notification !== 'undefined') {
-            setNotificationPermission(Notification.permission)
-
-            // Request Notification Permission if default
-            if (Notification.permission === 'default') {
-                Notification.requestPermission().then(perm => {
-                    setNotificationPermission(perm)
-                })
-            }
-        }
 
         const channel = supabase.channel('main-realtime', {
             config: {
@@ -240,10 +188,7 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
 
                     if (!isActive || isTabHidden) {
                         // Play sound only if not active/visible
-                        if (audioRef.current) {
-                            audioRef.current.currentTime = 0
-                            audioRef.current.play().catch(() => { /* expected on first load */ })
-                        }
+                        playNotificationSound()
 
                         const senderName = (enrichedMessage as any).sender?.full_name || 'Someone'
                         const title = conversationName ? `${senderName} in ${conversationName}` : senderName
@@ -253,7 +198,7 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
                         else if (newMessage.type === 'audio') displayContent = '🎤 Voice message'
                         else if (newMessage.type === 'file') displayContent = '📁 File'
 
-                        showNotification({ sender_name: title, content: displayContent })
+                        showNotification(title, { body: displayContent, tag: 'new-message' })
                     }
                     else {
                         console.log('[Realtime] Notification skipped: User is active in this conversation and tab is visible')
@@ -280,16 +225,13 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
                     if (message.sender_id === currentUserId || handledMessagesRef.current.has(message.id)) return
                     handledMessagesRef.current.add(message.id)
 
-                    if (audioRef.current) {
-                        audioRef.current.currentTime = 0
-                        audioRef.current.play().catch(() => { })
-                    }
+                    playNotificationSound()
 
                     const isTabHidden = typeof document !== 'undefined' && document.visibilityState === 'hidden'
                     const isActive = message.conversation_id === activeConvRef.current
 
                     if (!isActive || isTabHidden) {
-                        showNotification({ sender_name: sender_name || 'Someone', content: message.content })
+                        showNotification(sender_name || 'Someone', { body: message.content, tag: 'new-message' })
                     }
 
                     // Auto-mark as delivered via broadcast
@@ -334,7 +276,7 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
             console.log('[Realtime] Unsubscribing main-realtime')
             supabase.removeChannel(channel)
         }
-    }, [currentUserId, supabase, showNotification])
+    }, [currentUserId, supabase, showNotification, playNotificationSound])
 
     const isUserOnline = useCallback((userId: string) => {
         return !!onlineUsers[userId]
@@ -347,18 +289,9 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
         setActiveConversationId
     }), [onlineUsers, isUserOnline, activeConversationId])
 
-    const requestPermission = useCallback(async () => {
-        if (typeof Notification === 'undefined') return
-        const permission = await Notification.requestPermission()
-        setNotificationPermission(permission)
-        if (permission === 'granted') {
-            // Re-trigger push registration since we now have permission
-            window.location.reload() // Simplest way to re-run the registration effect
-        }
-    }, [])
 
     return (
-        <RealtimeContext.Provider value={{ onlineUsers, isUserOnline, activeConversationId, setActiveConversationId, notificationPermission, requestPermission }}>
+        <RealtimeContext.Provider value={{ onlineUsers, isUserOnline, activeConversationId, setActiveConversationId }}>
             {children}
         </RealtimeContext.Provider>
     )

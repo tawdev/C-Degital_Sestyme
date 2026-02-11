@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/client'
 import CallOverlay from '@/components/chat/call-overlay'
 import { sendCallNotification } from '@/app/(main)/messages/actions'
 import { logCall } from '@/app/(main)/chat/actions'
+import { useAudio } from '@/context/audio-context'
+import { useNotifications } from '@/context/notification-context'
 
 interface CallParticipant {
     id: string
@@ -57,15 +59,15 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         conversationId: null
     })
 
+    const { playRingtone, stopRingtone } = useAudio()
+    const { showNotification } = useNotifications()
+
     // Call Logging Refs
     const callStartTimeRef = useRef<number | null>(null)
     const callAnswerTimeRef = useRef<number | null>(null)
     const callConversationIdRef = useRef<string | null>(null)
 
-    const ringtoneRef = useRef<HTMLAudioElement | null>(null)
-    const notificationRef = useRef<Notification | null>(null)
     const timeoutRef = useRef<NodeJS.Timeout | null>(null)
-    const [needsInteraction, setNeedsInteraction] = useState(false)
 
     const [isMuted, setIsMuted] = useState(false)
     const [isCameraOff, setIsCameraOff] = useState(false)
@@ -102,85 +104,14 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         iceCandidatePoolSize: 10
     }
 
-    // Initialize Ringtone
+    // Emit call active status for Notification manager
     useEffect(() => {
-        const ringtone = new Audio('/sounds/call.mp3')
-        ringtone.loop = true
-        ringtone.volume = 1.0
-        ringtoneRef.current = ringtone
+        window.dispatchEvent(new CustomEvent('call-active-change', { detail: { active: callState.isActive } }))
+    }, [callState.isActive])
 
-        // Interaction listener to "unlock" audio and play if pending
-        const handleInteraction = () => {
-            if (statusRef.current === 'ringing') {
-                console.log('[CallManager] User interacted, attempting to play if needed')
-                ringtone.play()
-                    .then(() => setNeedsInteraction(false))
-                    .catch(e => console.warn('[CallManager] Play after interaction failed:', e))
-            }
-        }
-
-        window.addEventListener('click', handleInteraction, { once: true })
-        window.addEventListener('touchstart', handleInteraction, { once: true })
-
-        return () => {
-            window.removeEventListener('click', handleInteraction)
-            window.removeEventListener('touchstart', handleInteraction)
-            ringtone.pause()
-            ringtone.currentTime = 0
-            ringtoneRef.current = null
-        }
-    }, []) // Run once on mount
-
-    const playRingtone = () => {
-        if (ringtoneRef.current) {
-            // Safeguard: Don't play if already in a call or already connecting
-            if (statusRef.current === 'connected' || statusRef.current === 'calling') {
-                console.log('[CallManager] Already in call, skipping ringtone')
-                return
-            }
-
-            console.log('[CallManager] Attempting to play ringtone')
-            ringtoneRef.current.currentTime = 0
-            ringtoneRef.current.play().catch(err => {
-                console.warn('[CallManager] Autoplay blocked, waiting for interaction:', err)
-                setNeedsInteraction(true)
-            })
-        }
-    }
-
-    const stopRingtone = () => {
-        if (ringtoneRef.current) {
-            console.log('[CallManager] Stopping ringtone')
-            ringtoneRef.current.pause()
-            ringtoneRef.current.currentTime = 0
-            setNeedsInteraction(false)
-        }
-    }
-
-    const showNotification = (callerName: string, type: string) => {
-        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-            const notification = new Notification(`Appel ${type} entrant`, {
-                body: `${callerName} vous appelle...`,
-                icon: '/favicon.ico',
-                tag: 'incoming-call',
-                requireInteraction: true
-            })
-
-            notification.onclick = () => {
-                window.focus()
-                notification.close()
-            }
-
-            notificationRef.current = notification
-        }
-    }
-
-    const hideNotification = () => {
-        if (notificationRef.current) {
-            notificationRef.current.close()
-            notificationRef.current = null
-        }
-    }
+    const hideNotification = useCallback(() => {
+        // Handled by NotificationProvider on interaction or timeout
+    }, [])
 
     const broadcastSignal = useCallback((signal: string, from: string, to: string | string[], payload: any = {}) => {
         if (!channelRef.current) return
@@ -388,6 +319,147 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         try { await pc.addIceCandidate(new RTCIceCandidate(payload.candidate)) }
         catch (err) { console.error(`[CallManager] ICE candidate error from ${from}:`, err) }
     }, [])
+    const startCall = useCallback(async (conversationId: string, recipientId: string, recipientName: string, recipientAvatar: string | null, type: 'audio' | 'video') => {
+        try {
+            cleanupCall()
+            callConversationIdRef.current = conversationId; callStartTimeRef.current = Date.now()
+            const stream = await navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: { echoCancellation: true, noiseSuppression: true } })
+            localStreamRef.current = stream; setLocalStream(stream)
+            const recipientInfo = { id: recipientId, name: recipientName, avatar: recipientAvatar }
+            setCallState({
+                isActive: true, isIncoming: false, type, caller: null,
+                participants: [
+                    { id: currentUser.id, name: currentUser.full_name, avatar: currentUser.avatar_url, isMuted, isCameraOff },
+                    recipientInfo
+                ],
+                status: 'calling', videoUpgradeRequest: null, videoUpgradeInitiator: null, conversationId
+            })
+            broadcastSignal('initiate', currentUser.id, recipientId, {
+                type, conversationId,
+                metadata: {
+                    name: currentUser.full_name,
+                    avatar: currentUser.avatar_url,
+                    isMuted, isCameraOff
+                }
+            })
+            sendCallNotification(recipientId, currentUser.full_name, type).catch(err => console.error('[CallManager] Push failed:', err))
+        } catch (err) { console.error('[CallManager] Start call failed:', err); cleanupCall() }
+    }, [currentUser.id, currentUser.full_name, currentUser.avatar_url, broadcastSignal, cleanupCall, isMuted, isCameraOff])
+
+    const inviteParticipant = useCallback(async (userId: string, userName: string, userAvatar: string | null) => {
+        const state = callStateRef.current
+        if (!state.isActive || !localStreamRef.current) return
+
+        console.log(`[CallManager] Inviting ${userName} to join the call`)
+        const newUser = { id: userId, name: userName, avatar: userAvatar }
+
+        const updatedParticipants = state.participants.some(p => p.id === userId)
+            ? state.participants
+            : [...state.participants, newUser]
+
+        setCallState(prev => ({ ...prev, participants: updatedParticipants }))
+
+        broadcastSignal('invite', currentUser.id, userId, {
+            type: state.type,
+            conversationId: state.conversationId,
+            metadata: {
+                name: currentUser.full_name,
+                avatar: currentUser.avatar_url,
+                participants: updatedParticipants
+            }
+        })
+
+        sendCallNotification(userId, currentUser.full_name, state.type)
+            .catch(err => console.error('[CallManager] Invite push failed:', err))
+    }, [currentUser.id, currentUser.full_name, currentUser.avatar_url, broadcastSignal])
+
+    const rejectCall = useCallback(() => {
+        const state = callStateRef.current
+        if (state.caller) broadcastSignal('reject', currentUser.id, state.caller.id)
+        cleanupCall()
+        logCallAttempt('rejected')
+    }, [currentUser.id, broadcastSignal, cleanupCall, logCallAttempt])
+
+    const acceptCall = useCallback(async () => {
+        const state = callStateRef.current
+        if (!state.caller) return
+        try {
+            stopRingtone(); hideNotification()
+            if (timeoutRef.current) clearTimeout(timeoutRef.current)
+            const stream = await navigator.mediaDevices.getUserMedia({ video: state.type === 'video', audio: { echoCancellation: true, noiseSuppression: true } })
+            localStreamRef.current = stream; setLocalStream(stream)
+            setCallState(prev => ({
+                ...prev,
+                status: 'calling',
+                participants: prev.participants.map(p => p.id === currentUser.id ? { ...p, isMuted, isCameraOff } : p)
+            }))
+            callAnswerTimeRef.current = Date.now()
+            broadcastSignal('accept', currentUser.id, state.caller.id, {
+                metadata: {
+                    name: currentUser.full_name,
+                    avatar: currentUser.avatar_url,
+                    isMuted, isCameraOff
+                }
+            })
+
+            // IMPORTANT: Broadcast join signal to everyone else in the call
+            const others = state.participants.filter((p: CallParticipant) =>
+                p.id !== currentUser.id && p.id !== state.caller?.id
+            ).map((o: CallParticipant) => o.id)
+
+            if (others.length > 0) {
+                broadcastSignal('join', currentUser.id, others, {
+                    metadata: {
+                        name: currentUser.full_name,
+                        avatar: currentUser.avatar_url,
+                        isMuted, isCameraOff
+                    }
+                })
+            }
+        } catch (err) { console.error('[CallManager] Accept failed:', err); rejectCall() }
+    }, [currentUser.id, currentUser.full_name, currentUser.avatar_url, broadcastSignal, isMuted, isCameraOff, stopRingtone, hideNotification, rejectCall])
+
+    const endCall = useCallback(() => {
+        const state = callStateRef.current
+        const targets = state.participants.filter((p: CallParticipant) => p.id !== currentUser.id).map((p: CallParticipant) => p.id)
+        if (targets.length > 0) broadcastSignal('end', currentUser.id, targets)
+        const duration = callAnswerTimeRef.current ? Math.floor((Date.now() - callAnswerTimeRef.current) / 1000) : 0
+        logCallAttempt(callAnswerTimeRef.current ? 'answered' : 'missed', duration)
+        cleanupCall()
+    }, [currentUser.id, broadcastSignal, cleanupCall, logCallAttempt])
+
+    const toggleMute = useCallback(() => {
+        const audioTrack = localStreamRef.current?.getAudioTracks()[0]
+        if (audioTrack) { audioTrack.enabled = !audioTrack.enabled; setIsMuted(!audioTrack.enabled) }
+    }, [])
+
+    const toggleCamera = useCallback(() => {
+        const videoTrack = localStreamRef.current?.getVideoTracks()[0]
+        if (videoTrack) { videoTrack.enabled = !videoTrack.enabled; setIsCameraOff(!videoTrack.enabled) }
+    }, [])
+
+    const requestVideoUpgrade = useCallback(() => {
+        const state = callStateRef.current
+        if (state.type !== 'audio' || state.status !== 'connected') return
+        const targets = state.participants.filter((p: CallParticipant) => p.id !== currentUser.id).map((p: CallParticipant) => p.id)
+        if (targets.length > 0) broadcastSignal('video-upgrade-request', currentUser.id, targets)
+        setCallState(prev => ({ ...prev, videoUpgradeRequest: 'pending', videoUpgradeInitiator: currentUser.id }))
+    }, [currentUser.id, broadcastSignal])
+
+    const acceptVideoUpgrade = useCallback(async () => {
+        const state = callStateRef.current
+        if (!state.videoUpgradeInitiator) return
+        await addVideoTrackToCall()
+        broadcastSignal('video-upgrade-response', currentUser.id, state.videoUpgradeInitiator, { accepted: true })
+        setCallState(prev => ({ ...prev, videoUpgradeRequest: 'accepted', videoUpgradeInitiator: null }))
+    }, [currentUser.id, broadcastSignal, addVideoTrackToCall])
+
+    const rejectVideoUpgrade = useCallback(() => {
+        const state = callStateRef.current
+        if (!state.videoUpgradeInitiator) return
+        broadcastSignal('video-upgrade-response', currentUser.id, state.videoUpgradeInitiator, { accepted: false })
+        setCallState(prev => ({ ...prev, videoUpgradeRequest: null, videoUpgradeInitiator: null }))
+    }, [currentUser.id, broadcastSignal])
 
     useEffect(() => {
         const channel = supabase.channel('calls_v5', { config: { broadcast: { ack: true } } })
@@ -398,7 +470,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                     case 'initiate':
                         setCallState(prev => {
                             if (prev.isActive) { broadcastSignal('busy', currentUser.id, from); return prev }
-                            playRingtone(); showNotification(metadata.name, type)
+                            playRingtone(); showNotification(`Appel ${type} entrant`, { body: `${metadata.name} vous appelle...`, isCall: true, tag: 'incoming-call' })
                             if (timeoutRef.current) clearTimeout(timeoutRef.current)
                             timeoutRef.current = setTimeout(() => rejectCall(), 45000)
                             const callerInfo = { id: from, name: metadata.name, avatar: metadata.avatar }
@@ -416,7 +488,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                     case 'invite':
                         setCallState(prev => {
                             if (prev.isActive) return prev
-                            playRingtone(); showNotification(metadata.name, type)
+                            playRingtone(); showNotification(`Appel ${type} entrant`, { body: `${metadata.name} vous appelle...`, isCall: true, tag: 'incoming-call' })
                             const inviter = { id: from, name: metadata.name, avatar: metadata.avatar }
                             return {
                                 isActive: true, isIncoming: true, type, caller: inviter, participants: [...metadata.participants],
@@ -506,149 +578,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
             .subscribe()
         channelRef.current = channel
         return () => { supabase.removeChannel(channel) }
-    }, [currentUser.id, broadcastSignal, setupPeerConnection, handleOffer, handleAnswer, handleIceCandidate, cleanupCall])
-
-    const startCall = useCallback(async (conversationId: string, recipientId: string, recipientName: string, recipientAvatar: string | null, type: 'audio' | 'video') => {
-        try {
-            cleanupCall()
-            callConversationIdRef.current = conversationId; callStartTimeRef.current = Date.now()
-            const stream = await navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: { echoCancellation: true, noiseSuppression: true } })
-            localStreamRef.current = stream; setLocalStream(stream)
-            const recipientInfo = { id: recipientId, name: recipientName, avatar: recipientAvatar }
-            setCallState({
-                isActive: true, isIncoming: false, type, caller: null,
-                participants: [
-                    { id: currentUser.id, name: currentUser.full_name, avatar: currentUser.avatar_url, isMuted, isCameraOff },
-                    recipientInfo
-                ],
-                status: 'calling', videoUpgradeRequest: null, videoUpgradeInitiator: null, conversationId
-            })
-            broadcastSignal('initiate', currentUser.id, recipientId, {
-                type, conversationId,
-                metadata: {
-                    name: currentUser.full_name,
-                    avatar: currentUser.avatar_url,
-                    isMuted, isCameraOff
-                }
-            })
-            sendCallNotification(recipientId, currentUser.full_name, type).catch(err => console.error('[CallManager] Push failed:', err))
-        } catch (err) { console.error('[CallManager] Start call failed:', err); cleanupCall() }
-    }, [currentUser, broadcastSignal, cleanupCall])
-
-    const inviteParticipant = useCallback(async (userId: string, userName: string, userAvatar: string | null) => {
-        const state = callStateRef.current
-        if (!state.isActive || !localStreamRef.current) return
-
-        console.log(`[CallManager] Inviting ${userName} to join the call`)
-        const newUser = { id: userId, name: userName, avatar: userAvatar }
-
-        const updatedParticipants = state.participants.some(p => p.id === userId)
-            ? state.participants
-            : [...state.participants, newUser]
-
-        setCallState(prev => ({ ...prev, participants: updatedParticipants }))
-
-        broadcastSignal('invite', currentUser.id, userId, {
-            type: state.type,
-            conversationId: state.conversationId,
-            metadata: {
-                name: currentUser.full_name,
-                avatar: currentUser.avatar_url,
-                participants: updatedParticipants
-            }
-        })
-
-        sendCallNotification(userId, currentUser.full_name, state.type)
-            .catch(err => console.error('[CallManager] Invite push failed:', err))
-    }, [currentUser, broadcastSignal])
-
-    const acceptCall = useCallback(async () => {
-        const state = callStateRef.current
-        if (!state.caller) return
-        try {
-            stopRingtone(); hideNotification()
-            if (timeoutRef.current) clearTimeout(timeoutRef.current)
-            const stream = await navigator.mediaDevices.getUserMedia({ video: state.type === 'video', audio: { echoCancellation: true, noiseSuppression: true } })
-            localStreamRef.current = stream; setLocalStream(stream)
-            setCallState(prev => ({
-                ...prev,
-                status: 'calling',
-                participants: prev.participants.map(p => p.id === currentUser.id ? { ...p, isMuted, isCameraOff } : p)
-            }))
-            callAnswerTimeRef.current = Date.now()
-            broadcastSignal('accept', currentUser.id, state.caller.id, {
-                metadata: {
-                    name: currentUser.full_name,
-                    avatar: currentUser.avatar_url,
-                    isMuted, isCameraOff
-                }
-            })
-
-            // IMPORTANT: Broadcast join signal to everyone else in the call
-            const others = state.participants.filter((p: CallParticipant) =>
-                p.id !== currentUser.id && p.id !== state.caller?.id
-            ).map((o: CallParticipant) => o.id)
-
-            if (others.length > 0) {
-                broadcastSignal('join', currentUser.id, others, {
-                    metadata: {
-                        name: currentUser.full_name,
-                        avatar: currentUser.avatar_url,
-                        isMuted, isCameraOff
-                    }
-                })
-            }
-        } catch (err) { console.error('[CallManager] Accept failed:', err); rejectCall() }
-    }, [currentUser, broadcastSignal, cleanupCall, isMuted, isCameraOff])
-
-    const rejectCall = useCallback(() => {
-        const state = callStateRef.current
-        if (state.caller) broadcastSignal('reject', currentUser.id, state.caller.id)
-        cleanupCall()
-        logCallAttempt('rejected')
-    }, [currentUser.id, broadcastSignal, cleanupCall, logCallAttempt])
-
-    const endCall = useCallback(() => {
-        const state = callStateRef.current
-        const targets = state.participants.filter((p: CallParticipant) => p.id !== currentUser.id).map((p: CallParticipant) => p.id)
-        if (targets.length > 0) broadcastSignal('end', currentUser.id, targets)
-        const duration = callAnswerTimeRef.current ? Math.floor((Date.now() - callAnswerTimeRef.current) / 1000) : 0
-        logCallAttempt(callAnswerTimeRef.current ? 'answered' : 'missed', duration)
-        cleanupCall()
-    }, [currentUser.id, broadcastSignal, cleanupCall, logCallAttempt])
-
-    const toggleMute = useCallback(() => {
-        const audioTrack = localStreamRef.current?.getAudioTracks()[0]
-        if (audioTrack) { audioTrack.enabled = !audioTrack.enabled; setIsMuted(!audioTrack.enabled) }
-    }, [])
-
-    const toggleCamera = useCallback(() => {
-        const videoTrack = localStreamRef.current?.getVideoTracks()[0]
-        if (videoTrack) { videoTrack.enabled = !videoTrack.enabled; setIsCameraOff(!videoTrack.enabled) }
-    }, [])
-
-    const requestVideoUpgrade = useCallback(() => {
-        const state = callStateRef.current
-        if (state.type !== 'audio' || state.status !== 'connected') return
-        const targets = state.participants.filter((p: CallParticipant) => p.id !== currentUser.id).map((p: CallParticipant) => p.id)
-        if (targets.length > 0) broadcastSignal('video-upgrade-request', currentUser.id, targets)
-        setCallState(prev => ({ ...prev, videoUpgradeRequest: 'pending', videoUpgradeInitiator: currentUser.id }))
-    }, [currentUser.id, broadcastSignal])
-
-    const acceptVideoUpgrade = useCallback(async () => {
-        const state = callStateRef.current
-        if (!state.videoUpgradeInitiator) return
-        await addVideoTrackToCall()
-        broadcastSignal('video-upgrade-response', currentUser.id, state.videoUpgradeInitiator, { accepted: true })
-        setCallState(prev => ({ ...prev, videoUpgradeRequest: 'accepted', videoUpgradeInitiator: null }))
-    }, [currentUser.id, broadcastSignal, addVideoTrackToCall])
-
-    const rejectVideoUpgrade = useCallback(() => {
-        const state = callStateRef.current
-        if (!state.videoUpgradeInitiator) return
-        broadcastSignal('video-upgrade-response', currentUser.id, state.videoUpgradeInitiator, { accepted: false })
-        setCallState(prev => ({ ...prev, videoUpgradeRequest: null, videoUpgradeInitiator: null }))
-    }, [currentUser.id, broadcastSignal])
+    }, [currentUser.id, broadcastSignal, setupPeerConnection, handleOffer, handleAnswer, handleIceCandidate, cleanupCall, playRingtone, stopRingtone, showNotification, rejectCall])
 
     return (
         <CallContext.Provider value={{
