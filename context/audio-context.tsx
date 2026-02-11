@@ -22,8 +22,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         ringtoneRef.current = ringtone
 
         // Initialize notification sound
-        const pingBase64 = 'data:audio/mp3;base64,SUQzBAAAAAABAFRYWFgAAAASAAADbWFqb3JfYnJhbmQAZGFzaABUWFhYAAAAEQAAA21pbm9yX3ZlcnNpb24AMABUWFhYAAAAHAAAA2NvbXBhdGlibGVfYnJhbmRzAGlzbzZtcDQxAFRTU0UAAAAPAAADTGF2ZjYwLjMuMTAwAAAAAAAAAAAAAAD/+000OAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA/wAAAACAFG7bgAAAAAAAANuWAAAAAAAAAAEAAA6F//7kMQZAAAAGkAaACAAAnQBoAIAAAnQBj7v8AAAAA//uQxBkAAADYAYAAAAAC2AGAAAAAAEY+7/AAAAAP/7kMQZAAAAlgBgAAAAAJYAYAAAAAARj7v8AAAAA/+5DEGQAAACYAYAAAAACWAGAAAAAAEY+7/AAAAAD'
-        const notification = new Audio(pingBase64)
+        const notification = new Audio('/sounds/message.mp3')
         notification.preload = 'auto'
         notificationRef.current = notification
 

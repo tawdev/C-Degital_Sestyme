@@ -32,7 +32,19 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }, [])
 
     const showNotification = useCallback((title: string, options?: NotificationOptions & { isCall?: boolean }) => {
-        if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+        if (typeof Notification === 'undefined') return
+
+        if (Notification.permission === 'default') {
+            Notification.requestPermission().then(perm => {
+                setNotificationPermission(perm)
+                if (perm === 'granted') {
+                    showNotification(title, options)
+                }
+            })
+            return
+        }
+
+        if (Notification.permission !== 'granted') return
 
         const { isCall, ...notificationOptions } = options || {}
 

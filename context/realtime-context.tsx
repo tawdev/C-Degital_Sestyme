@@ -186,8 +186,12 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
 
                     console.log('[Realtime] Message Received -> isActive:', isActive, 'isTabHidden:', isTabHidden)
 
-                    if (!isActive || isTabHidden) {
-                        // Play sound only if not active/visible
+
+                    // 🔔 FIX: Simplified Notification Logic
+                    // 1. If tab is hidden -> ALWAYS notify
+                    // 2. If tab is visible but not in this conversation -> ALWAYS notify
+                    // 3. If in conversation -> Do NOT notify (handled by UI)
+                    if (isTabHidden || !isActive) {
                         playNotificationSound()
 
                         const senderName = (enrichedMessage as any).sender?.full_name || 'Someone'
@@ -198,10 +202,13 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
                         else if (newMessage.type === 'audio') displayContent = '🎤 Voice message'
                         else if (newMessage.type === 'file') displayContent = '📁 File'
 
-                        showNotification(title, { body: displayContent, tag: 'new-message' })
-                    }
-                    else {
-                        console.log('[Realtime] Notification skipped: User is active in this conversation and tab is visible')
+                        showNotification(title, {
+                            body: displayContent,
+                            tag: 'new-message',
+                            icon: '/favicon.ico' // Ensure icon is set
+                        })
+                    } else {
+                        console.log('[Realtime] Notification skipped: User is active in this conversation')
                     }
 
                     // Auto-mark as delivered via broadcast
