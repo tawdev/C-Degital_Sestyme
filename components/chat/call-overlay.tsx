@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, Maximize2, Minimize2, User, PictureInPicture, MoveDownLeft, UserPlus } from 'lucide-react'
 import InviteParticipantModal from './invite-participant-modal'
 import EmployeeAvatar from '@/components/employee-avatar'
@@ -63,20 +63,17 @@ export default function CallOverlay({
 
     const lastLocalStream = useRef<string>('')
 
-    useEffect(() => {
-        const video = localVideoRef.current
-        if (video && localStream) {
-            const streamId = localStream.id + localStream.getTracks().map(t => t.id).join(',')
-            if (lastLocalStream.current !== streamId) {
-                console.log('[CallOverlay] Attaching local stream')
-                video.srcObject = localStream
-                video.play().catch(err => {
-                    if (err.name !== 'AbortError') console.error('[CallOverlay] Local video play error:', err)
-                })
-                lastLocalStream.current = streamId
-            }
+
+    // 🔔 FIX: Use callback ref to ensure video element gets stream immediately on mount
+    const setLocalVideoRef = useCallback((element: HTMLVideoElement | null) => {
+        if (element && localStream) {
+            console.log('[CallOverlay] Attaching local stream to element via callback ref')
+            element.srcObject = localStream
+            element.play().catch(err => {
+                if (err.name !== 'AbortError') console.error('[CallOverlay] Local video play error:', err)
+            })
         }
-    }, [localStream, isMinimized]) // Re-run when minimizing toggles visibility of local video
+    }, [localStream])
 
     // Remote streams attachment
     useEffect(() => {
@@ -231,183 +228,130 @@ export default function CallOverlay({
                 `}
                 >
 
-                    {/* Main View (Remote Video Grid or Avatar) */}
+                    {/* Main View (Unified Video Grid) */}
                     <div className={`flex-1 relative bg-gray-800 p-2 overflow-hidden group`}>
                         <div className={`grid h-full w-full gap-2 transition-all duration-500 
-                            ${remoteCount === 1 ? 'grid-cols-1' :
-                                remoteCount === 2 ? 'grid-cols-2' :
-                                    remoteCount <= 4 ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3'}`}>
+                            ${state.participants.length <= 1 ? 'grid-cols-1' :
+                                state.participants.length === 2 ? 'grid-cols-1 md:grid-cols-2' :
+                                    state.participants.length <= 4 ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3'}`}>
 
-                            {/* Remote Participants */}
-                            {Object.entries(remoteStreams).map(([userId, stream]) => {
-                                const participantInfo = state.participants.find((p: any) => p.id === userId)
-                                const remoteVideoOff = participantInfo?.isCameraOff
-                                const remoteMuted = participantInfo?.isMuted
+                            {state.participants.map((p: any) => {
+                                const isLocal = p.id === currentUserId
+                                const stream = isLocal ? localStream : remoteStreams[p.id]
+                                const hasVideo = stream?.getVideoTracks().length > 0
+                                const isVideoOff = isLocal ? isCameraOff : p.isCameraOff
+                                const isAudioMuted = isLocal ? isMuted : p.isMuted
 
                                 return (
-                                    <div key={userId} className="relative bg-gray-900 rounded-2xl overflow-hidden group/video border border-white/5">
-                                        {state.type === 'video' && !remoteVideoOff ? (
+                                    <div key={p.id} className="relative bg-gray-900 rounded-2xl overflow-hidden group/video border border-white/5 shadow-lg">
+                                        {/* Video Element */}
+                                        {state.type === 'video' && !isVideoOff && stream ? (
                                             <video
-                                                ref={el => { remoteVideoRefs.current[userId] = el }}
+                                                ref={isLocal ? setLocalVideoRef : (el) => {
+                                                    if (el && stream && el.srcObject !== stream) {
+                                                        el.srcObject = stream
+                                                        el.play().catch(e => console.error('Remote play error', e))
+                                                    }
+                                                    // Store ref if needed
+                                                    if (!isLocal) remoteVideoRefs.current[p.id] = el
+                                                }}
                                                 autoPlay
+                                                muted={isLocal} // Always mute local to prevent echo
                                                 playsInline
+                                                style={isLocal ? { transform: 'scaleX(-1)' } : undefined}
                                                 className="w-full h-full object-cover"
                                             />
                                         ) : (
                                             <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-gray-800 to-gray-950">
                                                 <EmployeeAvatar
-                                                    avatarUrl={participantInfo?.avatar || null}
-                                                    fullName={participantInfo?.name || 'User'}
+                                                    avatarUrl={p.avatar}
+                                                    fullName={p.name}
                                                     className="w-24 h-24 text-2xl border-2 border-indigo-500/20 shadow-xl"
                                                 />
                                                 <div className="text-center">
-                                                    <p className="text-white font-medium">{participantInfo?.name || 'Inconnu'}</p>
+                                                    <p className="text-white font-medium">{p.name} {isLocal && '(Moi)'}</p>
                                                     <p className="text-indigo-400 text-[10px] uppercase tracking-widest font-bold">
-                                                        {remoteVideoOff ? 'Caméra désactivée' : 'Audio uniquement'}
+                                                        {isVideoOff ? 'Caméra désactivée' : 'En attente...'}
                                                     </p>
                                                 </div>
                                             </div>
                                         )}
 
-                                        {/* Status Overlays */}
+                                        {/* Audio Element for Remote Users */}
+                                        {!isLocal && (
+                                            <audio
+                                                autoPlay
+                                                playsInline
+                                                ref={(el) => {
+                                                    if (el && stream && stream.getAudioTracks().length > 0 && el.srcObject !== stream) {
+                                                        el.srcObject = stream
+                                                        el.play().catch(e => console.error('Audio play error', e))
+                                                    }
+                                                }}
+                                            />
+                                        )}
+
+                                        {/* Status Indicators */}
                                         <div className="absolute top-4 right-4 flex gap-2">
-                                            {remoteMuted && (
+                                            {isAudioMuted && (
                                                 <div className="p-2 bg-red-500/80 backdrop-blur-md rounded-lg border border-red-400/50 shadow-lg">
                                                     <MicOff className="w-4 h-4 text-white" />
-                                                </div>
-                                            )}
-                                            {remoteVideoOff && state.type === 'video' && (
-                                                <div className="p-2 bg-gray-800/80 backdrop-blur-md rounded-lg border border-white/10 shadow-lg">
-                                                    <VideoOff className="w-4 h-4 text-white" />
                                                 </div>
                                             )}
                                         </div>
 
                                         {/* Name Tag */}
                                         <div className="absolute bottom-4 left-4 px-3 py-1.5 bg-black/60 backdrop-blur-md rounded-xl border border-white/10 flex items-center gap-2">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                                            <p className="text-white text-[11px] font-bold uppercase tracking-wider">{participantInfo?.name}</p>
+                                            <div className={`w-1.5 h-1.5 rounded-full ${stream ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}></div>
+                                            <p className="text-white text-[11px] font-bold uppercase tracking-wider">
+                                                {p.name} {isLocal && '(Moi)'}
+                                            </p>
                                         </div>
-
-                                        <audio ref={el => { remoteAudioRefs.current[userId] = el }} autoPlay playsInline />
                                     </div>
                                 )
                             })}
-
-                            {/* Local Video in Grid for Group Calls (3+ participants total) */}
-                            {isConnected && totalParticipants > 2 && state.type === 'video' && (
-                                <div className="relative bg-gray-900 rounded-2xl overflow-hidden group/video border-2 border-indigo-500/30 shadow-inner">
-                                    {!isCameraOff ? (
-                                        <video
-                                            ref={localVideoRef}
-                                            autoPlay
-                                            muted
-                                            playsInline
-                                            style={{ transform: 'scaleX(-1)' }}
-                                            className="w-full h-full object-cover"
-                                        />
-                                    ) : (
-                                        <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-gray-800">
-                                            <EmployeeAvatar
-                                                avatarUrl={null}
-                                                fullName="Moi"
-                                                className="w-20 h-20 text-xl border-2 border-indigo-500/20"
-                                            />
-                                            <p className="text-gray-400 text-xs font-bold uppercase">Ma caméra est coupée</p>
-                                        </div>
-                                    )}
-                                    <div className="absolute top-4 right-4 flex gap-2">
-                                        {isMuted && (
-                                            <div className="p-2 bg-red-500/80 backdrop-blur-md rounded-lg border border-red-400/50 shadow-lg">
-                                                <MicOff className="w-4 h-4 text-white" />
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="absolute bottom-4 left-4 px-3 py-1.5 bg-indigo-600/60 backdrop-blur-md rounded-xl border border-indigo-400/30">
-                                        <p className="text-white text-[11px] font-bold uppercase tracking-wider">Moi (Aperçu)</p>
-                                    </div>
+                        </div>
+                    </div>
+                    {/* Local Video Preview (PICTURE IN PICTURE) - Only for 1-to-1 calls */}
+                    {!isMinimized && state.type === 'video' && totalParticipants <= 2 && (
+                        <div className="absolute top-6 right-6 w-1/4 aspect-video bg-gray-900 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/20 z-10 transition-all hover:scale-105 active:scale-95">
+                            {isCameraOff ? (
+                                <div className="w-full h-full flex items-center justify-center bg-gray-800">
+                                    <VideoOff className="w-8 h-8 text-gray-600" />
                                 </div>
-                            )}
-
-                            {/* Show placeholder if no remote streams connected yet OR if ringing */}
-                            {(remoteCount === 0 || isRinging) && (
-                                <div className="flex flex-col items-center justify-center h-full w-full gap-6">
-                                    <div className="relative">
-                                        <EmployeeAvatar
-                                            avatarUrl={participant?.avatar || null}
-                                            fullName={participant?.name || 'User'}
-                                            className={`${isMinimized ? 'w-16 h-16' : 'w-32 h-32'} text-4xl border-4 border-indigo-500/30 animate-pulse`}
-                                        />
-                                        <div className="absolute -bottom-2 -right-2 bg-indigo-600 p-2 rounded-full shadow-lg border-2 border-gray-900">
-                                            {state.type === 'video' ? <Video className="w-5 h-5 text-white" /> : <Phone className="w-5 h-5 text-white" />}
-                                        </div>
-                                    </div>
-                                    {!isMinimized && (
-                                        <div className="text-center max-w-md px-6">
-                                            <h2 className="text-2xl font-black text-white mb-2 leading-tight uppercase tracking-tight">
-                                                {totalParticipants > 2 ? 'Appel de groupe' : participant?.name || 'Connexion...'}
-                                            </h2>
-                                            <p className="text-indigo-400 font-bold uppercase text-xs tracking-[0.2em] animate-pulse">
-                                                {isRinging ? (totalParticipants > 2 ? '📞 On vous appelle pour rejoindre un appel en cours' : 'Appel entrant...') :
-                                                    isConnecting ? 'Sécurisation de la connexion...' :
-                                                        isConnected ? 'En attente des autres...' : 'Fin de l\'appel...'}
-                                            </p>
-                                            {totalParticipants > 2 && isRinging && (
-                                                <div className="mt-4 flex flex-wrap justify-center gap-2">
-                                                    {state.participants.map((p: any) => (
-                                                        <div key={p.id} className="flex items-center gap-1 bg-white/5 px-2 py-1 rounded-full border border-white/10">
-                                                            <div className="w-1 h-1 rounded-full bg-indigo-400"></div>
-                                                            <span className="text-[10px] text-gray-300 font-medium">{p.name}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
+                            ) : (
+                                <video
+                                    ref={setLocalVideoRef}
+                                    autoPlay
+                                    muted
+                                    playsInline
+                                    style={{ transform: 'scaleX(-1)' }}
+                                    className="w-full h-full object-cover"
+                                />
                             )}
                         </div>
+                    )}
 
-                        {/* Local Video Preview (PICTURE IN PICTURE) - Only for 1-to-1 calls */}
-                        {!isMinimized && state.type === 'video' && totalParticipants <= 2 && (
-                            <div className="absolute top-6 right-6 w-1/4 aspect-video bg-gray-900 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/20 z-10 transition-all hover:scale-105 active:scale-95">
-                                {isCameraOff ? (
-                                    <div className="w-full h-full flex items-center justify-center bg-gray-800">
-                                        <VideoOff className="w-8 h-8 text-gray-600" />
-                                    </div>
-                                ) : (
-                                    <video
-                                        ref={localVideoRef}
-                                        autoPlay
-                                        muted
-                                        playsInline
-                                        style={{ transform: 'scaleX(-1)' }}
-                                        className="w-full h-full object-cover"
-                                    />
-                                )}
-                            </div>
-                        )}
+                    {/* Mini Controls Overlay (Only visible when minimized on hover) */}
+                    {isMinimized && (
+                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px]">
+                            <button
+                                onClick={() => setIsMinimized(false)}
+                                className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all hover:scale-110"
+                                title="Maximize"
+                            >
+                                <Maximize2 className="w-6 h-6" />
+                            </button>
+                            <button
+                                onClick={onEnd}
+                                className="p-3 bg-red-500 hover:bg-red-600 text-white rounded-full transition-all hover:scale-110"
+                                title="End Call"
+                            >
+                                <PhoneOff className="w-6 h-6" />
+                            </button>
 
-                        {/* Mini Controls Overlay (Only visible when minimized on hover) */}
-                        {isMinimized && (
-                            <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px]">
-                                <button
-                                    onClick={() => setIsMinimized(false)}
-                                    className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all hover:scale-110"
-                                    title="Maximize"
-                                >
-                                    <Maximize2 className="w-6 h-6" />
-                                </button>
-                                <button
-                                    onClick={onEnd}
-                                    className="p-3 bg-red-500 hover:bg-red-600 text-white rounded-full transition-all hover:scale-110"
-                                    title="End Call"
-                                >
-                                    <PhoneOff className="w-6 h-6" />
-                                </button>
-                            </div>
-                        )}
-                    </div>
+                        </div>
+                    )}
 
                     {/* Controls Bar - Hidden when Minimized */}
                     {!isMinimized && (
@@ -546,7 +490,7 @@ export default function CallOverlay({
                         </div>
                     )}
                 </div>
-            </div>
+            </div >
         </>
     )
 

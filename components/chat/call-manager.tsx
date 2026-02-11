@@ -218,13 +218,21 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         }
 
         pc.ontrack = (event) => {
-            setRemoteStreams(prev => {
-                const stream = prev[otherUserId] || new MediaStream()
-                if (!stream.getTracks().find(t => t.id === event.track.id)) stream.addTrack(event.track)
-                const newStreams = { ...prev, [otherUserId]: new MediaStream(stream.getTracks()) }
-                remoteStreamsRef.current = newStreams
-                return newStreams
-            })
+            console.log(`[CallManager] Received remote track from ${otherUserId}:`, event.track.kind, event.streams.length > 0 ? 'Has Stream' : 'No Stream')
+            if (event.streams && event.streams[0]) {
+                const remoteStream = event.streams[0]
+                setRemoteStreams(prev => {
+                    return { ...prev, [otherUserId]: remoteStream }
+                })
+                remoteStreamsRef.current = { ...remoteStreamsRef.current, [otherUserId]: remoteStream }
+            } else {
+                // Fallback if no stream provided
+                setRemoteStreams(prev => {
+                    const stream = prev[otherUserId] || new MediaStream()
+                    stream.addTrack(event.track)
+                    return { ...prev, [otherUserId]: new MediaStream(stream.getTracks()) }
+                })
+            }
         }
 
         pc.onnegotiationneeded = async () => {
@@ -401,6 +409,20 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                     isMuted, isCameraOff
                 }
             })
+
+            // 🔔 FIX: Ensure tracks are added if connection exists (though usually it's created after)
+            const pc = peerConnections.current.get(state.caller.id)
+            if (pc && localStreamRef.current) {
+                localStreamRef.current.getTracks().forEach(track => {
+                    const senders = pc.getSenders()
+                    const existingSender = senders.find(s => s.track?.kind === track.kind)
+                    if (!existingSender) {
+                        pc.addTrack(track, localStreamRef.current!)
+                    } else {
+                        existingSender.replaceTrack(track)
+                    }
+                })
+            }
 
             // IMPORTANT: Broadcast join signal to everyone else in the call
             const others = state.participants.filter((p: CallParticipant) =>
