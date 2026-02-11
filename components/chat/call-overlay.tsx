@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, Maximize2, Minimize2, User, PictureInPicture, MoveDownLeft, UserPlus } from 'lucide-react'
+import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, Maximize2, Minimize2, User, PictureInPicture, MoveDownLeft, UserPlus, Monitor, MonitorOff } from 'lucide-react'
 import InviteParticipantModal from './invite-participant-modal'
 import EmployeeAvatar from '@/components/employee-avatar'
 
@@ -21,6 +21,10 @@ interface CallOverlayProps {
     onRejectVideoUpgrade: () => void
     onInvite: (userId: string, userName: string, userAvatar: string | null) => void
     currentUserId: string
+    onStartScreenShare: () => void
+    onStopScreenShare: () => void
+    isScreenSharing: boolean
+    screenSharingUserId: string | null
 }
 
 export default function CallOverlay({
@@ -38,9 +42,17 @@ export default function CallOverlay({
     onAcceptVideoUpgrade,
     onRejectVideoUpgrade,
     onInvite,
-    currentUserId
+    currentUserId,
+    onStartScreenShare,
+    onStopScreenShare,
+    isScreenSharing,
+    screenSharingUserId
 }: CallOverlayProps) {
     useEffect(() => {
+        console.log('[CallOverlay] PROPS UPDATE:', {
+            isScreenSharing, screenSharingUserId, currentUserId,
+            stateType: state.type, stateStatus: state.status
+        })
         if (state.videoUpgradeRequest === 'pending') {
             console.log('[CallOverlay] Video upgrade state:', {
                 request: state.videoUpgradeRequest,
@@ -227,23 +239,36 @@ export default function CallOverlay({
                         }
                 `}
                 >
+                    {/* VERSION TAG FOR DEBUGGING */}
+                    <div className="absolute top-0 right-0 p-1 bg-pink-500 text-[8px] text-white z-[200] opacity-50">
+                        v17:21-NUCLEAR
+                    </div>
 
                     {/* Main View (Unified Video Grid) */}
                     <div className={`flex-1 relative bg-gray-800 p-2 overflow-hidden group`}>
                         <div className={`grid h-full w-full gap-2 transition-all duration-500 
-                            ${state.participants.length <= 1 ? 'grid-cols-1' :
-                                state.participants.length === 2 ? 'grid-cols-1 md:grid-cols-2' :
-                                    state.participants.length <= 4 ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3'}`}>
+                            ${isScreenSharing ? 'grid-cols-1' :
+                                state.participants.length <= 1 ? 'grid-cols-1' :
+                                    state.participants.length === 2 ? 'grid-cols-1 md:grid-cols-2' :
+                                        state.participants.length <= 4 ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3'}`}>
 
-                            {state.participants.map((p: any) => {
+                            {state.participants.filter((p: any) => {
+                                // In 1-to-1 calls, we show the other person full screen and local in corner
+                                // In group calls, we show everyone in the grid
+                                const total = state.participants.length
+                                if (total <= 2) return p.id !== currentUserId
+                                return true
+                            }).map((p: any) => {
                                 const isLocal = p.id === currentUserId
                                 const stream = isLocal ? localStream : remoteStreams[p.id]
                                 const hasVideo = !!stream && stream.getVideoTracks().length > 0
                                 const isVideoOff = isLocal ? isCameraOff : p.isCameraOff
                                 const isAudioMuted = isLocal ? isMuted : p.isMuted
 
+                                const isSharer = screenSharingUserId === p.id
+
                                 return (
-                                    <div key={p.id} className="relative bg-gray-900 rounded-2xl overflow-hidden group/video border border-white/5 shadow-lg">
+                                    <div key={p.id} className={`relative bg-gray-900 rounded-2xl overflow-hidden group/video border shadow-lg transition-all duration-500 ${isSharer ? 'border-indigo-500 shadow-indigo-500/20' : 'border-white/5'}`}>
                                         {/* Video Element */}
                                         {state.type === 'video' && !isVideoOff && stream ? (
                                             <video
@@ -258,8 +283,8 @@ export default function CallOverlay({
                                                 autoPlay
                                                 muted={isLocal} // Always mute local to prevent echo
                                                 playsInline
-                                                style={isLocal ? { transform: 'scaleX(-1)' } : undefined}
-                                                className="w-full h-full object-cover"
+                                                style={isLocal && !isScreenSharing ? { transform: 'scaleX(-1)' } : undefined}
+                                                className={`w-full h-full ${isSharer ? 'object-contain bg-black' : 'object-cover'}`}
                                             />
                                         ) : (
                                             <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-gray-800 to-gray-950">
@@ -293,6 +318,12 @@ export default function CallOverlay({
 
                                         {/* Status Indicators */}
                                         <div className="absolute top-4 right-4 flex gap-2">
+                                            {isSharer && (
+                                                <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-500/90 backdrop-blur-md rounded-lg border border-indigo-400/50 shadow-lg animate-in slide-in-from-top-2 duration-300">
+                                                    <Monitor className="w-4 h-4 text-white" />
+                                                    <span className="text-white text-[10px] font-bold uppercase tracking-wider">Partage d'écran</span>
+                                                </div>
+                                            )}
                                             {isAudioMuted && (
                                                 <div className="p-2 bg-red-500/80 backdrop-blur-md rounded-lg border border-red-400/50 shadow-lg">
                                                     <MicOff className="w-4 h-4 text-white" />
@@ -404,6 +435,16 @@ export default function CallOverlay({
                                 </>
                             ) : (
                                 <>
+                                    {/* Screen Share Button - NUCLEAR VISIBILITY */}
+                                    <button
+                                        onClick={isScreenSharing && screenSharingUserId === currentUserId ? onStopScreenShare : onStartScreenShare}
+                                        disabled={isScreenSharing && screenSharingUserId !== currentUserId}
+                                        className={`w-14 h-14 flex items-center justify-center rounded-full transition-all border-2 ${isScreenSharing && screenSharingUserId === currentUserId ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-emerald-600 border-white text-white hover:bg-emerald-500 hover:scale-110'} ${isScreenSharing && screenSharingUserId !== currentUserId ? 'opacity-30 cursor-not-allowed' : ''} z-[120] shadow-xl`}
+                                        title={isScreenSharing && screenSharingUserId === currentUserId ? "Arrêter le partage" : "Partager l'écran"}
+                                    >
+                                        {isScreenSharing && screenSharingUserId === currentUserId ? <MonitorOff className="w-7 h-7" /> : <Monitor className="w-7 h-7" />}
+                                    </button>
+
                                     <button
                                         onClick={onMute}
                                         className={`w-14 h-14 flex items-center justify-center rounded-full transition-all border ${isMuted ? 'bg-red-500/20 border-red-500 text-red-500' : 'bg-white/10 border-white/10 text-white hover:bg-white/20'}`}
@@ -415,13 +456,14 @@ export default function CallOverlay({
                                         <button
                                             onClick={onCamera}
                                             className={`w-14 h-14 flex items-center justify-center rounded-full transition-all border ${isCameraOff ? 'bg-red-500/20 border-red-500 text-red-500' : 'bg-white/10 border-white/10 text-white hover:bg-white/20'}`}
+                                            title={isCameraOff ? "Activer la caméra" : "Désactiver la caméra"}
                                         >
                                             {isCameraOff ? <VideoOff className="w-6 h-6" /> : <Video className="w-6 h-6" />}
                                         </button>
                                     )}
 
                                     {/* Video Upgrade Button - Only visible during audio calls */}
-                                    {state.type === 'audio' && state.status === 'connected' && !state.videoUpgradeRequest && (
+                                    {state.type === 'audio' && state.status === 'connected' && !state.videoUpgradeRequest && !isScreenSharing && (
                                         <button
                                             onClick={onRequestVideoUpgrade}
                                             className="w-14 h-14 flex items-center justify-center rounded-full transition-all border bg-indigo-500/20 border-indigo-500 text-indigo-400 hover:bg-indigo-500/30 hover:border-indigo-400 hover:text-indigo-300 animate-pulse"

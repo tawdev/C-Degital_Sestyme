@@ -26,6 +26,8 @@ interface CallState {
     videoUpgradeRequest: null | 'pending' | 'accepted' | 'rejected'
     videoUpgradeInitiator: string | null
     conversationId: string | null
+    screenSharingUserId: string | null // ID of user currently sharing screen
+    isScreenSharing: boolean // Is current user sharing screen
 }
 
 interface CallContextType {
@@ -43,6 +45,8 @@ interface CallContextType {
     requestVideoUpgrade: () => void
     acceptVideoUpgrade: () => void
     rejectVideoUpgrade: () => void
+    startScreenShare: () => void
+    stopScreenShare: () => void
 }
 
 const CallContext = createContext<CallContextType | undefined>(undefined)
@@ -57,7 +61,9 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         status: 'idle',
         videoUpgradeRequest: null,
         videoUpgradeInitiator: null,
-        conversationId: null
+        conversationId: null,
+        screenSharingUserId: null,
+        isScreenSharing: false
     })
 
     const { playRingtone, stopRingtone } = useAudio()
@@ -76,6 +82,12 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
     const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({})
     const localStreamRef = useRef<MediaStream | null>(null)
     const remoteStreamsRef = useRef<Record<string, MediaStream>>({})
+
+    // Screen sharing refs
+    const screenStreamRef = useRef<MediaStream | null>(null)
+    const [remoteScreenStreams, setRemoteScreenStreams] = useState<Record<string, MediaStream>>({})
+    const remoteScreenStreamsRef = useRef<Record<string, MediaStream>>({})
+    const originalVideoTrackRef = useRef<MediaStreamTrack | null>(null) // Store original camera track
 
     const supabase = createClient()
     const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map())
@@ -213,7 +225,8 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
 
         setCallState({
             isActive: false, isIncoming: false, type: 'video', caller: null, participants: [], status: 'idle',
-            videoUpgradeRequest: null, videoUpgradeInitiator: null, conversationId: null
+            videoUpgradeRequest: null, videoUpgradeInitiator: null, conversationId: null,
+            screenSharingUserId: null, isScreenSharing: false
         })
     }, [stopRingtone])
 
@@ -313,7 +326,8 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
 
     const handleOffer = useCallback(async (payload: any) => {
         const from = payload.from
-        let pc = peerConnections.current.get(from) || setupPeerConnection(from, true)
+        const polite = currentUser.id < from // Deterministic politeness
+        let pc = peerConnections.current.get(from) || setupPeerConnection(from, polite)
         const description = new RTCSessionDescription(payload.sdp)
         const readyForOffer = !makingOffer.current.get(from) && (pc.signalingState === 'stable' || pc.signalingState === 'have-local-offer')
         ignoreOffer.current.set(from, !isPolite.current.get(from) && !readyForOffer)
@@ -374,7 +388,8 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                     { id: currentUser.id, name: currentUser.full_name, avatar: currentUser.avatar_url, isMuted, isCameraOff },
                     recipientInfo
                 ],
-                status: 'calling', videoUpgradeRequest: null, videoUpgradeInitiator: null, conversationId
+                status: 'calling', videoUpgradeRequest: null, videoUpgradeInitiator: null, conversationId,
+                screenSharingUserId: null, isScreenSharing: false
             })
             broadcastSignal('initiate', currentUser.id, recipientId, {
                 type, conversationId,
@@ -416,7 +431,9 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                 status: 'calling',
                 videoUpgradeRequest: null,
                 videoUpgradeInitiator: null,
-                conversationId
+                conversationId,
+                screenSharingUserId: null,
+                isScreenSharing: false
             })
 
             // Send initiate signal to ALL group members (except current user)
@@ -570,6 +587,137 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         setCallState(prev => ({ ...prev, videoUpgradeRequest: null, videoUpgradeInitiator: null }))
     }, [currentUser.id, broadcastSignal])
 
+    const startScreenShare = useCallback(async () => {
+        const state = callStateRef.current
+        if (!state.isActive || state.status !== 'connected') {
+            console.warn('[CallManager] Screen share only available in connected calls')
+            return
+        }
+
+        try {
+            // Request screen sharing permission
+            const screenStream = await navigator.mediaDevices.getDisplayMedia({
+                video: true,
+                audio: false // Can be enabled if needed
+            })
+
+            const screenTrack = screenStream.getVideoTracks()[0]
+            if (!screenTrack) {
+                console.error('[CallManager] No video track in screen stream')
+                return
+            }
+
+            // If it was an audio call, we are now effectively in a video-capable call
+            if (state.type === 'audio') {
+                setCallState(prev => ({ ...prev, type: 'video' }))
+            }
+
+            // Store original camera track
+            const currentVideoTrack = localStreamRef.current?.getVideoTracks()[0]
+            if (currentVideoTrack) {
+                originalVideoTrackRef.current = currentVideoTrack
+            }
+
+            // Replace video track in all peer connections or add it
+            await Promise.all(Array.from(peerConnections.current.entries()).map(async ([otherUserId, pc]) => {
+                const senders = pc.getSenders()
+                const videoSender = senders.find(s => s.track?.kind === 'video')
+
+                if (videoSender) {
+                    await videoSender.replaceTrack(screenTrack)
+                    console.log(`[CallManager] Replaced video track with screen share for ${otherUserId}`)
+                } else {
+                    // If no video sender exists (audio call), add the track
+                    pc.addTrack(screenTrack, screenStream)
+                    console.log(`[CallManager] Added screen share track for ${otherUserId}`)
+                }
+            }))
+
+            // Update local stream
+            if (localStreamRef.current) {
+                const audioTrack = localStreamRef.current.getAudioTracks()[0]
+                const newStream = new MediaStream()
+                if (audioTrack) newStream.addTrack(audioTrack)
+                newStream.addTrack(screenTrack)
+                localStreamRef.current = newStream
+                setLocalStream(newStream)
+            }
+
+            screenStreamRef.current = screenStream
+
+            // Broadcast screen share start to all participants
+            const targets = state.participants.filter((p: CallParticipant) => p.id !== currentUser.id).map((p: CallParticipant) => p.id)
+            if (targets.length > 0) {
+                broadcastSignal('screen-share-start', currentUser.id, targets)
+            }
+
+            // Update state
+            setCallState(prev => ({ ...prev, isScreenSharing: true, screenSharingUserId: currentUser.id }))
+
+            // Listen for when user stops sharing via browser UI
+            screenTrack.onended = () => {
+                console.log('[CallManager] Screen share stopped by user')
+                stopScreenShare()
+            }
+
+            console.log('[CallManager] Screen sharing started successfully')
+        } catch (err: any) {
+            console.error('[CallManager] Screen share failed:', err)
+            if (err.name === 'NotAllowedError') {
+                console.warn('[CallManager] User denied screen share permission')
+            }
+        }
+    }, [currentUser.id, broadcastSignal])
+
+    const stopScreenShare = useCallback(async () => {
+        const state = callStateRef.current
+        if (!state.isScreenSharing) return
+
+        try {
+            // Stop screen stream tracks
+            if (screenStreamRef.current) {
+                screenStreamRef.current.getTracks().forEach(track => track.stop())
+                screenStreamRef.current = null
+            }
+
+            // Restore original camera track
+            const originalTrack = originalVideoTrackRef.current
+            if (originalTrack && localStreamRef.current) {
+                // Replace screen track with camera track in all peer connections
+                await Promise.all(Array.from(peerConnections.current.entries()).map(async ([otherUserId, pc]) => {
+                    const senders = pc.getSenders()
+                    const videoSender = senders.find(s => s.track?.kind === 'video')
+
+                    if (videoSender) {
+                        await videoSender.replaceTrack(originalTrack)
+                        console.log(`[CallManager] Restored camera track for ${otherUserId}`)
+                    }
+                }))
+
+                // Update local stream
+                const audioTrack = localStreamRef.current.getAudioTracks()[0]
+                const newStream = new MediaStream()
+                if (audioTrack) newStream.addTrack(audioTrack)
+                newStream.addTrack(originalTrack)
+                localStreamRef.current = newStream
+                setLocalStream(newStream)
+            }
+
+            // Broadcast screen share stop
+            const targets = state.participants.filter((p: CallParticipant) => p.id !== currentUser.id).map((p: CallParticipant) => p.id)
+            if (targets.length > 0) {
+                broadcastSignal('screen-share-stop', currentUser.id, targets)
+            }
+
+            // Update state
+            setCallState(prev => ({ ...prev, isScreenSharing: false, screenSharingUserId: null }))
+
+            console.log('[CallManager] Screen sharing stopped successfully')
+        } catch (err) {
+            console.error('[CallManager] Stop screen share failed:', err)
+        }
+    }, [currentUser.id, broadcastSignal])
+
     useEffect(() => {
         const channel = supabase.channel('calls_v5', { config: { broadcast: { ack: true } } })
             .on('broadcast', { event: 'call-signal' }, async ({ payload }: { payload: any }) => {
@@ -593,7 +741,8 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                                     { ...callerInfo, isMuted: metadata.isMuted, isCameraOff: metadata.isCameraOff },
                                     { id: currentUser.id, name: currentUser.full_name, avatar: currentUser.avatar_url, isMuted, isCameraOff }
                                 ],
-                                status: 'ringing', videoUpgradeRequest: null, videoUpgradeInitiator: null, conversationId: payload.conversationId
+                                status: 'ringing', videoUpgradeRequest: null, videoUpgradeInitiator: null, conversationId: payload.conversationId,
+                                screenSharingUserId: null, isScreenSharing: false
                             }
                         })
                         callConversationIdRef.current = payload.conversationId; callStartTimeRef.current = Date.now(); callAnswerTimeRef.current = null
@@ -605,7 +754,8 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                             const inviter = { id: from, name: metadata.name, avatar: metadata.avatar }
                             return {
                                 isActive: true, isIncoming: true, type, caller: inviter, participants: [...metadata.participants],
-                                status: 'ringing', videoUpgradeRequest: null, videoUpgradeInitiator: null, conversationId: payload.conversationId
+                                status: 'ringing', videoUpgradeRequest: null, videoUpgradeInitiator: null, conversationId: payload.conversationId,
+                                screenSharingUserId: null, isScreenSharing: false
                             }
                         })
                         callConversationIdRef.current = payload.conversationId; callStartTimeRef.current = Date.now(); callAnswerTimeRef.current = null
@@ -622,7 +772,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                                 ? prev.participants.map(p => p.id === from ? { ...p, ...joiner } : p)
                                 : [...prev.participants, joiner]
                         }))
-                        if (statusRef.current === 'connected') setupPeerConnection(from, false)
+                        if (statusRef.current === 'connected') setupPeerConnection(from, currentUser.id < from)
                         break
                     case 'accept':
                         stopRingtone()
@@ -633,7 +783,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                                 ? prev.participants.map(p => p.id === from ? { ...p, isMuted: metadata.isMuted, isCameraOff: metadata.isCameraOff } : p)
                                 : [...prev.participants, { id: from, name: metadata.name, avatar: metadata.avatar, isMuted: metadata.isMuted, isCameraOff: metadata.isCameraOff }]
                         }))
-                        setupPeerConnection(from, false)
+                        setupPeerConnection(from, currentUser.id < from)
                         break
                     case 'status-update':
                         setCallState(prev => ({
@@ -645,29 +795,12 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                     case 'answer': await handleAnswer(payload); break
                     case 'ice-candidate': await handleIceCandidate(payload); break
                     case 'video-renegotiation-offer':
-                        try {
-                            const pcOffer = peerConnections.current.get(from)
-                            if (!pcOffer) return
-                            // Check state before proceeding
-                            if (pcOffer.signalingState !== 'stable' && pcOffer.signalingState !== 'have-local-offer') {
-                                console.warn(`[CallManager] Renegotiation offer ignored due to state: ${pcOffer.signalingState}`)
-                                // If we are in 'have-remote-offer', we might need to rollback or ignore
-                                if (pcOffer.signalingState === 'have-remote-offer') {
-                                    // potential glare, but we are polite?
-                                }
-                            }
-                            await pcOffer.setRemoteDescription(new RTCSessionDescription(payload.sdp))
-                            const answer = await pcOffer.createAnswer()
-                            await pcOffer.setLocalDescription(answer)
-                            broadcastSignal('video-renegotiation-answer', currentUser.id, from, { sdp: answer })
-                        } catch (err) { console.error('[CallManager] Renegotiation offer handler failed:', err) }
+                        console.log('[CallManager] Handling legacy video-renegotiation-offer as standard offer')
+                        await handleOffer(payload)
                         break
                     case 'video-renegotiation-answer':
-                        try {
-                            const pcAnswer = peerConnections.current.get(from)
-                            if (!pcAnswer) return
-                            await pcAnswer.setRemoteDescription(new RTCSessionDescription(payload.sdp))
-                        } catch (err) { console.error('[CallManager] Renegotiation answer handler failed:', err) }
+                        console.log('[CallManager] Handling legacy video-renegotiation-answer as standard answer')
+                        await handleAnswer(payload)
                         break
                     case 'video-upgrade-request':
                         if (statusRef.current === 'connected') setCallState(prev => ({ ...prev, videoUpgradeRequest: 'pending', videoUpgradeInitiator: from }))
@@ -678,6 +811,14 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                             setCallState(prev => ({ ...prev, videoUpgradeRequest: 'rejected', videoUpgradeInitiator: null }))
                             setTimeout(() => setCallState(prev => ({ ...prev, videoUpgradeRequest: null })), 3000)
                         }
+                        break
+                    case 'screen-share-start':
+                        console.log(`[CallManager] ${from} started screen sharing`)
+                        setCallState(prev => ({ ...prev, isScreenSharing: true, screenSharingUserId: from }))
+                        break
+                    case 'screen-share-stop':
+                        console.log(`[CallManager] ${from} stopped screen sharing`)
+                        setCallState(prev => ({ ...prev, isScreenSharing: false, screenSharingUserId: null }))
                         break
                     case 'reject': case 'busy':
                         stopRingtone()
@@ -722,7 +863,8 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         <CallContext.Provider value={{
             startCall, startGroupCall, inviteParticipant, acceptCall, rejectCall, endCall,
             callState, toggleMute, toggleCamera, isMuted, isCameraOff,
-            requestVideoUpgrade, acceptVideoUpgrade, rejectVideoUpgrade
+            requestVideoUpgrade, acceptVideoUpgrade, rejectVideoUpgrade,
+            startScreenShare, stopScreenShare
         }}>
             {children}
             {callState.isActive && (
@@ -732,6 +874,8 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                     onMute={toggleMute} onCamera={toggleCamera} isMuted={isMuted} isCameraOff={isCameraOff}
                     onRequestVideoUpgrade={requestVideoUpgrade} onAcceptVideoUpgrade={acceptVideoUpgrade} onRejectVideoUpgrade={rejectVideoUpgrade}
                     onInvite={inviteParticipant} currentUserId={currentUser.id}
+                    onStartScreenShare={startScreenShare} onStopScreenShare={stopScreenShare}
+                    isScreenSharing={callState.isScreenSharing} screenSharingUserId={callState.screenSharingUserId}
                 />
             )}
         </CallContext.Provider>
