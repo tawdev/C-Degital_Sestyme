@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useRealtime } from '@/context/realtime-context'
+import { useNotifications } from '@/context/notification-context'
 import { ChatMessage, ChatRole } from '@/lib/types/chat'
 import { sendMessage, getMessages, markConversationAsRead, deleteMessage, toggleReaction, getConversationDetails, getGroupMembers, updateMessageStatus, updateAllDelivered } from '@/app/(main)/chat/actions' // Correct path
 import { Send, Loader2, Paperclip, Mic, X, File as FileIcon, Square, CheckCircle2, Download, Trash2, SmilePlus, Users, Settings, Phone, Video as VideoIcon, Check, CheckCheck, Reply, ArrowLeft } from 'lucide-react'
@@ -50,7 +51,8 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLInputElement>(null)
     const router = useRouter()
-    const { isUserOnline, setActiveConversationId, notificationPermission, requestPermission } = useRealtime()
+    const { isUserOnline, setActiveConversationId } = useRealtime()
+    const { notificationPermission, requestPermission } = useNotifications()
     const [statusUpdates, setStatusUpdates] = useState<Record<string, 'delivered' | 'seen'>>({})
     const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null)
     const [hasMounted, setHasMounted] = useState(false)
