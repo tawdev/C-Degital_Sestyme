@@ -86,6 +86,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
     const ignoreOffer = useRef<Map<string, boolean>>(new Map())
     const isPolite = useRef<Map<string, boolean>>(new Map())
     const isSettingRemoteAnswerPending = useRef<Map<string, boolean>>(new Map())
+    const isRenegotiating = useRef<boolean>(false)
 
     const statusRef = useRef(callState.status)
     const callStateRef = useRef(callState)
@@ -147,15 +148,41 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
             const videoTrack = videoStream.getVideoTracks()[0]
             if (!videoTrack) return
 
+            // 🔔 FIX: Lock automatic negotiation to prevent glare
+            isRenegotiating.current = true
+
             const currentStream = localStreamRef.current || new MediaStream()
             currentStream.addTrack(videoTrack)
             localStreamRef.current = currentStream
             setLocalStream(new MediaStream(currentStream.getTracks()))
 
-            peerConnections.current.forEach(pc => pc.addTrack(videoTrack, currentStream))
+            // 🔔 FIX: Explicit Renegotiation for Mesh Network
+            // Iterate over all peers to add track AND trigger renegotiation
+            await Promise.all(Array.from(peerConnections.current.entries()).map(async ([otherUserId, pc]) => {
+                const senders = pc.getSenders()
+                const existingSender = senders.find(s => s.track?.kind === 'video')
+
+                if (existingSender) {
+                    await existingSender.replaceTrack(videoTrack)
+                } else {
+                    pc.addTrack(videoTrack, currentStream)
+                }
+
+                // Create Offer for Renegotiation
+                const offer = await pc.createOffer()
+                await pc.setLocalDescription(offer)
+
+                // Signal the specific peer
+                broadcastSignal('video-renegotiation-offer', currentUser.id, otherUserId, { sdp: offer })
+            }))
+
             setCallState(prev => ({ ...prev, type: 'video', videoUpgradeRequest: null }))
         } catch (err) { console.error('[CallManager] Video track add failed:', err) }
-    }, [])
+        finally {
+            // Release lock after a short delay to allow signals to propagate
+            setTimeout(() => { isRenegotiating.current = false }, 2000)
+        }
+    }, [currentUser.id, broadcastSignal])
 
     const cleanupCall = useCallback(() => {
         console.log('[CallManager] Cleaning up call')
@@ -236,6 +263,12 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         }
 
         pc.onnegotiationneeded = async () => {
+            // 🔔 FIX: Suppress automatic negotiation if we are manually upgrading
+            if (isRenegotiating.current) {
+                console.log(`[CallManager] Skipping onnegotiationneeded for ${otherUserId} due to manual renegotiation`)
+                return
+            }
+
             try {
                 makingOffer.current.set(otherUserId, true)
                 const offer = await pc.createOffer()
@@ -430,6 +463,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
             ).map((o: CallParticipant) => o.id)
 
             if (others.length > 0) {
+                // 🔔 FIX: usage of array for 'others' is now correctly handled by the listener
                 broadcastSignal('join', currentUser.id, others, {
                     metadata: {
                         name: currentUser.full_name,
@@ -487,7 +521,11 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         const channel = supabase.channel('calls_v5', { config: { broadcast: { ack: true } } })
             .on('broadcast', { event: 'call-signal' }, async ({ payload }: { payload: any }) => {
                 const { signal, from, to, type, metadata } = payload
-                if (to !== currentUser.id) return
+
+                // 🔔 FIX: Handle both single string and array targets
+                const isForMe = Array.isArray(to) ? to.includes(currentUser.id) : to === currentUser.id
+                if (!isForMe) return
+
                 switch (signal) {
                     case 'initiate':
                         setCallState(prev => {
@@ -553,6 +591,31 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                     case 'offer': await handleOffer(payload); break
                     case 'answer': await handleAnswer(payload); break
                     case 'ice-candidate': await handleIceCandidate(payload); break
+                    case 'video-renegotiation-offer':
+                        try {
+                            const pcOffer = peerConnections.current.get(from)
+                            if (!pcOffer) return
+                            // Check state before proceeding
+                            if (pcOffer.signalingState !== 'stable' && pcOffer.signalingState !== 'have-local-offer') {
+                                console.warn(`[CallManager] Renegotiation offer ignored due to state: ${pcOffer.signalingState}`)
+                                // If we are in 'have-remote-offer', we might need to rollback or ignore
+                                if (pcOffer.signalingState === 'have-remote-offer') {
+                                    // potential glare, but we are polite?
+                                }
+                            }
+                            await pcOffer.setRemoteDescription(new RTCSessionDescription(payload.sdp))
+                            const answer = await pcOffer.createAnswer()
+                            await pcOffer.setLocalDescription(answer)
+                            broadcastSignal('video-renegotiation-answer', currentUser.id, from, { sdp: answer })
+                        } catch (err) { console.error('[CallManager] Renegotiation offer handler failed:', err) }
+                        break
+                    case 'video-renegotiation-answer':
+                        try {
+                            const pcAnswer = peerConnections.current.get(from)
+                            if (!pcAnswer) return
+                            await pcAnswer.setRemoteDescription(new RTCSessionDescription(payload.sdp))
+                        } catch (err) { console.error('[CallManager] Renegotiation answer handler failed:', err) }
+                        break
                     case 'video-upgrade-request':
                         if (statusRef.current === 'connected') setCallState(prev => ({ ...prev, videoUpgradeRequest: 'pending', videoUpgradeInitiator: from }))
                         break
