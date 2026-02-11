@@ -750,25 +750,43 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
                 </div>
 
                 <div className="flex items-center gap-1">
-                    {!isGroup && !isAdminMonitoring && (
+                    {!isAdminMonitoring && (
                         <>
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation()
-                                    startCall(conversationId, otherUser!.id, otherUser!.full_name, otherUser!.avatar_url, 'audio')
+                                    if (isGroup) {
+                                        // For group calls, start with the first available member
+                                        // Others can be added during the call using the "Add Participant" button
+                                        const firstMember = groupMembers.find(m => m.id !== currentUser.id)
+                                        if (firstMember) {
+                                            startCall(conversationId, firstMember.id, firstMember.full_name, firstMember.avatar_url, 'audio')
+                                        }
+                                    } else {
+                                        startCall(conversationId, otherUser!.id, otherUser!.full_name, otherUser!.avatar_url, 'audio')
+                                    }
                                 }}
                                 className="p-2 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
-                                title="Voice Call"
+                                title={isGroup ? "Démarrer un appel de groupe" : "Appel vocal"}
                             >
                                 <Phone className="w-5 h-5" />
                             </button>
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation()
-                                    startCall(conversationId, otherUser!.id, otherUser!.full_name, otherUser!.avatar_url, 'video')
+                                    if (isGroup) {
+                                        // For group calls, start with the first available member
+                                        // Others can be added during the call using the "Add Participant" button
+                                        const firstMember = groupMembers.find(m => m.id !== currentUser.id)
+                                        if (firstMember) {
+                                            startCall(conversationId, firstMember.id, firstMember.full_name, firstMember.avatar_url, 'video')
+                                        }
+                                    } else {
+                                        startCall(conversationId, otherUser!.id, otherUser!.full_name, otherUser!.avatar_url, 'video')
+                                    }
                                 }}
                                 className="p-2 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
-                                title="Video Call"
+                                title={isGroup ? "Démarrer un appel vidéo de groupe" : "Appel vidéo"}
                             >
                                 <VideoIcon className="w-5 h-5" />
                             </button>
