@@ -30,6 +30,7 @@ interface CallState {
 
 interface CallContextType {
     startCall: (conversationId: string, recipientId: string, recipientName: string, recipientAvatar: string | null, type: 'audio' | 'video') => void
+    startGroupCall: (conversationId: string, members: Array<{ id: string; full_name: string; avatar_url: string | null }>, type: 'audio' | 'video') => void
     inviteParticipant: (userId: string, userName: string, userAvatar: string | null) => void
     acceptCall: () => void
     rejectCall: () => void
@@ -387,6 +388,58 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         } catch (err) { console.error('[CallManager] Start call failed:', err); cleanupCall() }
     }, [currentUser.id, currentUser.full_name, currentUser.avatar_url, broadcastSignal, cleanupCall, isMuted, isCameraOff])
 
+    const startGroupCall = useCallback(async (conversationId: string, members: Array<{ id: string; full_name: string; avatar_url: string | null }>, type: 'audio' | 'video') => {
+        try {
+            cleanupCall()
+            callConversationIdRef.current = conversationId
+            callStartTimeRef.current = Date.now()
+            const stream = await navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: { echoCancellation: true, noiseSuppression: true } })
+            localStreamRef.current = stream
+            setLocalStream(stream)
+
+            // Build participants list: current user + all group members
+            const allParticipants = [
+                { id: currentUser.id, name: currentUser.full_name, avatar: currentUser.avatar_url, isMuted, isCameraOff },
+                ...members.filter(m => m.id !== currentUser.id).map(m => ({
+                    id: m.id,
+                    name: m.full_name,
+                    avatar: m.avatar_url
+                }))
+            ]
+
+            setCallState({
+                isActive: true,
+                isIncoming: false,
+                type,
+                caller: null,
+                participants: allParticipants,
+                status: 'calling',
+                videoUpgradeRequest: null,
+                videoUpgradeInitiator: null,
+                conversationId
+            })
+
+            // Send initiate signal to ALL group members (except current user)
+            const otherMembers = members.filter(m => m.id !== currentUser.id)
+            otherMembers.forEach(member => {
+                broadcastSignal('initiate', currentUser.id, member.id, {
+                    type,
+                    conversationId,
+                    metadata: {
+                        name: currentUser.full_name,
+                        avatar: currentUser.avatar_url,
+                        isMuted,
+                        isCameraOff
+                    }
+                })
+                sendCallNotification(member.id, currentUser.full_name, type).catch(err => console.error('[CallManager] Push failed:', err))
+            })
+        } catch (err) {
+            console.error('[CallManager] Start group call failed:', err)
+            cleanupCall()
+        }
+    }, [currentUser.id, currentUser.full_name, currentUser.avatar_url, broadcastSignal, cleanupCall, isMuted, isCameraOff])
+
     const inviteParticipant = useCallback(async (userId: string, userName: string, userAvatar: string | null) => {
         const state = callStateRef.current
         if (!state.isActive || !localStreamRef.current) return
@@ -667,7 +720,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
 
     return (
         <CallContext.Provider value={{
-            startCall, inviteParticipant, acceptCall, rejectCall, endCall,
+            startCall, startGroupCall, inviteParticipant, acceptCall, rejectCall, endCall,
             callState, toggleMute, toggleCamera, isMuted, isCameraOff,
             requestVideoUpgrade, acceptVideoUpgrade, rejectVideoUpgrade
         }}>

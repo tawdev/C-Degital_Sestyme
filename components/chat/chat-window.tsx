@@ -47,7 +47,7 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
     }, [groupMembers])
 
     const [showGroupSettings, setShowGroupSettings] = useState(false)
-    const { startCall } = useCall()
+    const { startCall, startGroupCall } = useCall()
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLInputElement>(null)
     const router = useRouter()
@@ -756,12 +756,8 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
                                 onClick={(e) => {
                                     e.stopPropagation()
                                     if (isGroup) {
-                                        // For group calls, start with the first available member
-                                        // Others can be added during the call using the "Add Participant" button
-                                        const firstMember = groupMembers.find(m => m.id !== currentUser.id)
-                                        if (firstMember) {
-                                            startCall(conversationId, firstMember.id, firstMember.full_name, firstMember.avatar_url, 'audio')
-                                        }
+                                        // For group calls, start with ALL members
+                                        startGroupCall(conversationId, groupMembers, 'audio')
                                     } else {
                                         startCall(conversationId, otherUser!.id, otherUser!.full_name, otherUser!.avatar_url, 'audio')
                                     }
@@ -775,12 +771,8 @@ export default function ChatWindow({ conversationId, currentUser, recipient, isA
                                 onClick={(e) => {
                                     e.stopPropagation()
                                     if (isGroup) {
-                                        // For group calls, start with the first available member
-                                        // Others can be added during the call using the "Add Participant" button
-                                        const firstMember = groupMembers.find(m => m.id !== currentUser.id)
-                                        if (firstMember) {
-                                            startCall(conversationId, firstMember.id, firstMember.full_name, firstMember.avatar_url, 'video')
-                                        }
+                                        // For group calls, start with ALL members
+                                        startGroupCall(conversationId, groupMembers, 'video')
                                     } else {
                                         startCall(conversationId, otherUser!.id, otherUser!.full_name, otherUser!.avatar_url, 'video')
                                     }
