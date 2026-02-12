@@ -25,6 +25,7 @@ interface CallOverlayProps {
     onStopScreenShare: () => void
     isScreenSharing: boolean
     screenSharingUserId: string | null
+    isRecording?: boolean
 }
 
 export default function CallOverlay({
@@ -46,7 +47,8 @@ export default function CallOverlay({
     onStartScreenShare,
     onStopScreenShare,
     isScreenSharing,
-    screenSharingUserId
+    screenSharingUserId,
+    isRecording
 }: CallOverlayProps) {
     useEffect(() => {
         console.log('[CallOverlay] PROPS UPDATE:', {
@@ -239,10 +241,13 @@ export default function CallOverlay({
                         }
                 `}
                 >
-                    {/* VERSION TAG FOR DEBUGGING */}
-                    <div className="absolute top-0 right-0 p-1 bg-pink-500 text-[8px] text-white z-[200] opacity-50">
-                        v17:21-NUCLEAR
-                    </div>
+                    {/* Recording Indicator */}
+                    {isRecording && (
+                        <div className="absolute top-4 left-4 flex items-center gap-2 z-[200] bg-black/40 px-3 py-1.5 rounded-full border border-red-500/30 backdrop-blur-md">
+                            <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+                            <span className="text-[10px] font-black text-white tracking-widest uppercase">REC</span>
+                        </div>
+                    )}
 
                     {/* Main View (Unified Video Grid) */}
                     <div className={`flex-1 relative bg-gray-800 p-2 overflow-hidden group`}>
@@ -435,14 +440,14 @@ export default function CallOverlay({
                                 </>
                             ) : (
                                 <>
-                                    {/* Screen Share Button - NUCLEAR VISIBILITY */}
+                                    {/* Screen Share Button */}
                                     <button
                                         onClick={isScreenSharing && screenSharingUserId === currentUserId ? onStopScreenShare : onStartScreenShare}
                                         disabled={isScreenSharing && screenSharingUserId !== currentUserId}
-                                        className={`w-14 h-14 flex items-center justify-center rounded-full transition-all border-2 ${isScreenSharing && screenSharingUserId === currentUserId ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-emerald-600 border-white text-white hover:bg-emerald-500 hover:scale-110'} ${isScreenSharing && screenSharingUserId !== currentUserId ? 'opacity-30 cursor-not-allowed' : ''} z-[120] shadow-xl`}
+                                        className={`w-14 h-14 flex items-center justify-center rounded-full transition-all border ${isScreenSharing && screenSharingUserId === currentUserId ? 'bg-indigo-500/20 border-indigo-500 text-indigo-500' : 'bg-white/10 border-white/10 text-white hover:bg-white/20'} ${isScreenSharing && screenSharingUserId !== currentUserId ? 'opacity-50 cursor-not-allowed' : ''} z-[100]`}
                                         title={isScreenSharing && screenSharingUserId === currentUserId ? "Arrêter le partage" : "Partager l'écran"}
                                     >
-                                        {isScreenSharing && screenSharingUserId === currentUserId ? <MonitorOff className="w-7 h-7" /> : <Monitor className="w-7 h-7" />}
+                                        {isScreenSharing && screenSharingUserId === currentUserId ? <MonitorOff className="w-6 h-6" /> : <Monitor className="w-6 h-6" />}
                                     </button>
 
                                     <button

@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { logout, getSession } from '../auth/actions'
-import { LayoutDashboard, Users, Briefcase, LogOut, User, MessageSquare } from 'lucide-react'
+import { LayoutDashboard, Users, Briefcase, LogOut, User, MessageSquare, Video } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getUnreadCount } from './messages/actions'
 import UnreadBadge from '@/components/chat/unread-badge'
@@ -77,6 +77,11 @@ export default async function MainLayout({ children }: { children: React.ReactNo
                                                         Employees
                                                     </NavLink>
                                                 )}
+                                                {isAdmin && (
+                                                    <NavLink href="/calls" icon={Video}>
+                                                        Appels
+                                                    </NavLink>
+                                                )}
                                                 <NavLink
                                                     href="/projects"
                                                     icon={Briefcase}
@@ -145,6 +150,11 @@ export default async function MainLayout({ children }: { children: React.ReactNo
                                         {isAdmin && (
                                             <MobileNavLink href="/employees" icon={Users}>
                                                 Employees
+                                            </MobileNavLink>
+                                        )}
+                                        {isAdmin && (
+                                            <MobileNavLink href="/calls" icon={Video}>
+                                                Appels
                                             </MobileNavLink>
                                         )}
                                         <MobileNavLink href="/projects" icon={Briefcase}>

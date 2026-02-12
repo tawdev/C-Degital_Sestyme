@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { Users, Briefcase, Activity, CheckCircle2, TrendingUp, ArrowUpRight, Plus, Calendar } from 'lucide-react'
+import { Users, Briefcase, Activity, CheckCircle2, TrendingUp, ArrowUpRight, Plus, Calendar, Video } from 'lucide-react'
 import Link from 'next/link'
 import { getSession } from '@/app/auth/actions'
 import { redirect } from 'next/navigation'
@@ -40,7 +40,8 @@ export default async function DashboardPage() {
         { data: activeProjects },
         { data: pendingProjects },
         { data: completedProjectsCountData },
-        projectStats
+        projectStats,
+        { count: callsCount }
     ] = await Promise.all([
         supabase.from('projects').select('*', { count: 'exact', head: true }),
         supabase.from('employees').select('*', { count: 'exact', head: true }),
@@ -49,7 +50,8 @@ export default async function DashboardPage() {
         supabase.from('projects').select('id').eq('status', 'in_progress'),
         supabase.from('projects').select('id').eq('status', 'pending'),
         supabase.from('projects').select('id').eq('status', 'completed'),
-        getProjectStats()
+        getProjectStats(),
+        supabase.from('calls').select('*', { count: 'exact', head: true })
     ])
 
     // Calculate real percentage changes
@@ -101,6 +103,17 @@ export default async function DashboardPage() {
             link: '/projects',
             description: 'Livrés avec succès',
             change: projectCount ? Math.round((completedProjectsCountData?.length || 0) / projectCount * 100) : 0
+        },
+        {
+            name: 'Appels enregistrés',
+            value: callsCount || 0,
+            icon: Video,
+            color: 'from-purple-600 to-indigo-700',
+            bgColor: 'bg-purple-50',
+            iconColor: 'text-purple-600',
+            link: '/calls',
+            description: 'Historique des appels',
+            change: 0
         }
     ]
 

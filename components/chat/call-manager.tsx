@@ -4,7 +4,7 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import { createClient } from '@/lib/supabase/client'
 import CallOverlay from '@/components/chat/call-overlay'
 import { sendCallNotification } from '@/app/(main)/messages/actions'
-import { logCall } from '@/app/(main)/chat/actions'
+import { logCall, saveCallRecording } from '@/app/(main)/chat/actions'
 import { useAudio } from '@/context/audio-context'
 import { useNotifications } from '@/context/notification-context'
 
@@ -82,6 +82,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
     const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({})
     const localStreamRef = useRef<MediaStream | null>(null)
     const remoteStreamsRef = useRef<Record<string, MediaStream>>({})
+    const [recordingStatus, setRecordingStatus] = useState(false)
 
     // Screen sharing refs
     const screenStreamRef = useRef<MediaStream | null>(null)
@@ -100,6 +101,14 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
     const isPolite = useRef<Map<string, boolean>>(new Map())
     const isSettingRemoteAnswerPending = useRef<Map<string, boolean>>(new Map())
     const isRenegotiating = useRef<boolean>(false)
+    const isRecording = useRef<boolean>(false)
+
+    // Recording Refs
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+    const recordingChunksRef = useRef<Blob[]>([])
+    const audioContextRef = useRef<AudioContext | null>(null)
+    const audioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null)
+    const audioSourcesRef = useRef<Map<string, MediaStreamAudioSourceNode>>(new Map())
 
     const statusRef = useRef(callState.status)
     const callStateRef = useRef(callState)
@@ -197,6 +206,128 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         }
     }, [currentUser.id, broadcastSignal])
 
+    const addStreamToMixer = useCallback((uid: string, stream: MediaStream) => {
+        if (!isRecording.current || !audioContextRef.current || !audioDestinationRef.current) return
+        if (audioSourcesRef.current.has(uid)) return
+
+        try {
+            const ctx = audioContextRef.current
+            const dest = audioDestinationRef.current
+            const audioTracks = stream.getAudioTracks()
+
+            if (audioTracks.length > 0) {
+                console.log(`[CallManager] Adding ${uid} to audio mixer`)
+                const source = ctx.createMediaStreamSource(new MediaStream([audioTracks[0]]))
+                source.connect(dest)
+                audioSourcesRef.current.set(uid, source)
+            }
+        } catch (err) {
+            console.error(`[CallManager] Failed to add ${uid} to mixer:`, err)
+        }
+    }, [])
+
+    const removeStreamFromMixer = useCallback((uid: string) => {
+        const source = audioSourcesRef.current.get(uid)
+        if (source) {
+            console.log(`[CallManager] Removing ${uid} from audio mixer`)
+            source.disconnect()
+            audioSourcesRef.current.delete(uid)
+        }
+    }, [])
+
+    const startRecording = useCallback(() => {
+        if (isRecording.current) return
+        // Only the initiator records to save bandwidth/processing and avoid duplicates
+        if (callStateRef.current.isIncoming) return
+
+        console.log('[CallManager] Starting automatic multi-participant recording (Initiator mode)')
+        setRecordingStatus(true)
+
+        try {
+            // 1. Initialize Audio Context
+            if (!audioContextRef.current) {
+                audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+                audioDestinationRef.current = audioContextRef.current.createMediaStreamDestination()
+            }
+
+            const ctx = audioContextRef.current
+            const dest = audioDestinationRef.current!
+
+            // Resume context if suspended (browser policy)
+            if (ctx.state === 'suspended') ctx.resume()
+
+            // 2. Mix Local Audio (if not already added)
+            if (!audioSourcesRef.current.has('local') && localStreamRef.current?.getAudioTracks().length! > 0) {
+                const source = ctx.createMediaStreamSource(new MediaStream([localStreamRef.current!.getAudioTracks()[0]]))
+                source.connect(dest)
+                audioSourcesRef.current.set('local', source)
+            }
+
+            // 3. Mix existing Remote Audios
+            Object.entries(remoteStreamsRef.current).forEach(([uid, stream]) => {
+                addStreamToMixer(uid, stream)
+            })
+
+            // 4. Combine with Video for Recording
+            const videoTracks = localStreamRef.current?.getVideoTracks() || []
+            const combinedStream = new MediaStream([
+                ...dest.stream.getAudioTracks(),
+                ...(videoTracks.length > 0 ? [videoTracks[0]] : [])
+            ])
+
+            // 5. Setup MediaRecorder
+            const options = { mimeType: 'video/webm;codecs=vp8,opus' }
+            if (!MediaRecorder.isTypeSupported(options.mimeType)) options.mimeType = 'video/webm'
+
+            mediaRecorderRef.current = new MediaRecorder(combinedStream, options)
+            recordingChunksRef.current = []
+
+            mediaRecorderRef.current.ondataavailable = (e) => {
+                if (e.data.size > 0) recordingChunksRef.current.push(e.data)
+            }
+
+            mediaRecorderRef.current.onstop = async () => {
+                console.log('[CallManager] Recording stopped, finalized blob size:', new Blob(recordingChunksRef.current).size)
+                const blob = new Blob(recordingChunksRef.current, { type: 'video/webm' })
+                if (blob.size < 5000) return // Ignore very short/empty files
+
+                const formData = new FormData()
+                formData.append('file', blob)
+                formData.append('conversationId', callConversationIdRef.current || '')
+                formData.append('callerId', currentUser.id)
+                formData.append('type', callStateRef.current.type)
+                formData.append('participants', JSON.stringify(callStateRef.current.participants.map(p => p.id)))
+                formData.append('duration', (callAnswerTimeRef.current ? Math.floor((Date.now() - callAnswerTimeRef.current) / 1000) : 0).toString())
+                formData.append('status', 'completed')
+
+                const result = await saveCallRecording(formData)
+                if (result.success) console.log('[CallManager] Recording saved successfully:', result.callId)
+            }
+
+            mediaRecorderRef.current.start(1000)
+            isRecording.current = true
+        } catch (err) {
+            console.error('[CallManager] Failed to start recording:', err)
+        }
+    }, [currentUser.id, addStreamToMixer])
+
+    const stopRecording = useCallback(() => {
+        if (!isRecording.current) return
+        console.log('[CallManager] Stopping recording session')
+        setRecordingStatus(false)
+
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.stop()
+        }
+
+        // Cleanup Audio Nodes but keep Context for potential restart? 
+        // Better clean everything.
+        audioSourcesRef.current.forEach(source => source.disconnect())
+        audioSourcesRef.current.clear()
+
+        isRecording.current = false
+    }, [])
+
     const cleanupCall = useCallback(() => {
         console.log('[CallManager] Cleaning up call')
         stopRingtone()
@@ -223,12 +354,14 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         pendingCandidates.current.clear()
         isSettingRemoteAnswerPending.current.clear()
 
+        stopRecording()
+
         setCallState({
             isActive: false, isIncoming: false, type: 'video', caller: null, participants: [], status: 'idle',
             videoUpgradeRequest: null, videoUpgradeInitiator: null, conversationId: null,
             screenSharingUserId: null, isScreenSharing: false
         })
-    }, [stopRingtone])
+    }, [stopRingtone, stopRecording])
 
     const logCallAttempt = useCallback(async (status: 'answered' | 'missed' | 'rejected', duration: number = 0) => {
         if (!callStartTimeRef.current || !callConversationIdRef.current) return
@@ -259,20 +392,18 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         }
 
         pc.ontrack = (event) => {
-            console.log(`[CallManager] Received remote track from ${otherUserId}:`, event.track.kind, event.streams.length > 0 ? 'Has Stream' : 'No Stream')
+            console.log(`[CallManager] Received remote track from ${otherUserId}:`, event.track.kind)
             if (event.streams && event.streams[0]) {
                 const remoteStream = event.streams[0]
                 setRemoteStreams(prev => {
                     return { ...prev, [otherUserId]: remoteStream }
                 })
                 remoteStreamsRef.current = { ...remoteStreamsRef.current, [otherUserId]: remoteStream }
-            } else {
-                // Fallback if no stream provided
-                setRemoteStreams(prev => {
-                    const stream = prev[otherUserId] || new MediaStream()
-                    stream.addTrack(event.track)
-                    return { ...prev, [otherUserId]: new MediaStream(stream.getTracks()) }
-                })
+
+                // Dynamic Audio Mixing
+                if (event.track.kind === 'audio') {
+                    addStreamToMixer(otherUserId, remoteStream)
+                }
             }
         }
 
@@ -295,7 +426,14 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
 
         pc.oniceconnectionstatechange = () => {
             if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-                setCallState(prev => prev.status !== 'connected' ? { ...prev, status: 'connected' } : prev)
+                setCallState(prev => {
+                    if (prev.status !== 'connected') {
+                        // START RECORDING when first peer connects
+                        setTimeout(startRecording, 1000) // Delay to ensure tracks are ready
+                        return { ...prev, status: 'connected' }
+                    }
+                    return prev
+                })
             }
         }
 
@@ -304,6 +442,10 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                 setTimeout(() => {
                     if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
                         setCallState(prev => ({ ...prev, participants: prev.participants.filter((p: CallParticipant) => p.id !== otherUserId) }))
+
+                        // Dynamic Audio Mixer Cleanup
+                        removeStreamFromMixer(otherUserId)
+
                         pc.close()
                         peerConnections.current.delete(otherUserId)
                         setRemoteStreams(prev => {
@@ -876,6 +1018,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                     onInvite={inviteParticipant} currentUserId={currentUser.id}
                     onStartScreenShare={startScreenShare} onStopScreenShare={stopScreenShare}
                     isScreenSharing={callState.isScreenSharing} screenSharingUserId={callState.screenSharingUserId}
+                    isRecording={recordingStatus}
                 />
             )}
         </CallContext.Provider>

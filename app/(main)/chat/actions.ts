@@ -616,6 +616,107 @@ export async function sendMessage(formData: FormData) {
     return { success: true, message: finalData }
 }
 
+export async function saveCallRecording(formData: FormData) {
+    const adminClient = createAdminClient()
+    const session = await getSession()
+    if (!session?.id) return { error: 'Unauthorized' }
+
+    const conversationId = formData.get('conversationId') as string
+    const callerId = formData.get('callerId') as string
+    const type = formData.get('type') as 'audio' | 'video'
+    const duration = parseInt(formData.get('duration') as string) || 0
+    const participantsJson = formData.get('participants') as string
+    const file = formData.get('file') as File
+    const status = formData.get('status') as 'completed' | 'missed' | 'rejected'
+
+    if (!file || file.size === 0) return { error: 'No file provided' }
+
+    try {
+        // 1. Upload to Supabase Storage
+        const fileName = `${conversationId}/${Date.now()}-${callerId}.webm`
+        const path = `recordings/${fileName}`
+
+        const { error: uploadError } = await adminClient
+            .storage
+            .from('call-recordings')
+            .upload(path, file, {
+                contentType: file.type,
+                upsert: false
+            })
+
+        if (uploadError) throw uploadError
+
+        const { data: { publicUrl } } = adminClient
+            .storage
+            .from('call-recordings')
+            .getPublicUrl(path)
+
+        // 2. Insert into calls table
+        const { data: callRow, error: callError } = await adminClient
+            .from('calls')
+            .insert({
+                conversation_id: conversationId,
+                caller_id: callerId,
+                participants: JSON.parse(participantsJson),
+                type,
+                status,
+                duration,
+                recording_url: path // Save the path, we'll generate signed URLs for security
+            })
+            .select()
+            .single()
+
+        if (callError) throw callError
+
+        revalidatePath('/calls')
+        return { success: true, callId: callRow.id }
+    } catch (err: any) {
+        console.error('[saveCallRecording] Error:', err)
+        return { error: err.message || 'Failed to save recording' }
+    }
+}
+
+export async function getCallLogs() {
+    const adminClient = createAdminClient()
+    const session = await getSession()
+    if (!session?.id || session.role !== 'Administrator') {
+        return { error: 'Unauthorized' }
+    }
+
+    try {
+        const { data, error } = await adminClient
+            .from('calls')
+            .select(`
+                *,
+                caller:employees!calls_caller_id_fkey(id, full_name, avatar_url),
+                conversation:conversations(id, name, is_group)
+            `)
+            .order('created_at', { ascending: false })
+
+        if (error) throw error
+
+        // Generate signed URLs for recordings
+        const logsWithUrls = await Promise.all((data || []).map(async (log) => {
+            if (!log.recording_url) return log
+
+            const { data: signedData, error: signedError } = await adminClient
+                .storage
+                .from('call-recordings')
+                .createSignedUrl(log.recording_url, 3600) // 1 hour
+
+            return {
+                ...log,
+                signed_url: signedData?.signedUrl || null
+            }
+        }))
+
+        return { success: true, logs: logsWithUrls }
+    } catch (err: any) {
+        console.error('[getCallLogs] Error:', err)
+        return { error: err.message }
+    }
+}
+
 export async function logCall(payload: {
     conversationId: string;
     callerId: string;
