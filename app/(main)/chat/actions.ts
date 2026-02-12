@@ -1313,3 +1313,342 @@ export async function getGroupMembers(conversationId: string) {
         return []
     }
 }
+
+export async function createMeeting(formData: FormData) {
+    const adminClient = createAdminClient()
+    const session = await getSession()
+
+    if (!session?.id) return { error: 'Unauthorized' }
+
+    const title = formData.get('title') as string
+    const description = formData.get('description') as string
+    const scheduledAt = formData.get('scheduledAt') as string
+    const type = (formData.get('type') as 'audio' | 'video') || 'video'
+    const userIds = JSON.parse(formData.get('userIds') as string) as string[]
+
+    try {
+        // 1. Create meeting
+        const { data: meeting, error: meetingError } = await adminClient
+            .from('meetings')
+            .insert({
+                title,
+                description,
+                host_id: session.id,
+                scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : new Date().toISOString(),
+                type,
+                status: 'scheduled'
+            })
+            .select('id')
+            .single()
+
+        if (meetingError) throw meetingError
+
+        // 2. Add participants (including host)
+        const participantIds = Array.from(new Set([...userIds, session.id]))
+        const participants = participantIds.map(uid => ({
+            meeting_id: meeting.id,
+            user_id: uid,
+            role: uid === session.id ? 'host' : 'participant'
+        }))
+
+        const { error: partError } = await adminClient
+            .from('meeting_participants')
+            .insert(participants)
+
+        if (partError) throw partError
+
+        // --- NOTIFICATIONS SYSTEM ---
+        const { data: meetingFull } = await adminClient
+            .from('meetings')
+            .select('scheduled_at')
+            .eq('id', meeting.id)
+            .single()
+
+        const scheduledTime = new Date(meetingFull?.scheduled_at || new Date())
+        const notifications: any[] = []
+
+        participantIds.forEach(uid => {
+            // 1. Immediate Notification
+            notifications.push({
+                meeting_id: meeting.id,
+                user_id: uid,
+                type: 'immediate',
+                scheduled_at: scheduledTime.toISOString(),
+                trigger_at: new Date().toISOString(),
+                sound: 'default'
+            })
+
+            // 2. 10 Minutes Before
+            const tenMinBefore = new Date(scheduledTime.getTime() - 10 * 60000)
+            if (tenMinBefore > new Date()) {
+                notifications.push({
+                    meeting_id: meeting.id,
+                    user_id: uid,
+                    type: 'reminder_10min',
+                    scheduled_at: scheduledTime.toISOString(),
+                    trigger_at: tenMinBefore.toISOString(),
+                    sound: 'reminder'
+                })
+            }
+
+            // 3. Exact Time
+            notifications.push({
+                meeting_id: meeting.id,
+                user_id: uid,
+                type: 'reminder_exact',
+                scheduled_at: scheduledTime.toISOString(),
+                trigger_at: scheduledTime.toISOString(),
+                sound: 'exact'
+            })
+        })
+
+        const { error: notifError } = await adminClient
+            .from('meeting_notifications')
+            .insert(notifications)
+
+        if (notifError) {
+            console.error('[createMeeting] Error inserting notifications:', notifError)
+        }
+
+        // Send immediate push notification to all participants except host
+        try {
+            const { sendPushNotification } = await import('@/lib/push-notifications')
+            const pushPromises = userIds.map(uid => sendPushNotification(uid, {
+                title: 'Nouveau Meeting',
+                body: `Vous avez un meeting prévu le ${scheduledTime.toLocaleDateString('fr-FR')} à ${scheduledTime.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
+                data: { url: `/meetings/${meeting.id}` }
+            }))
+            await Promise.all(pushPromises)
+        } catch (err) {
+            console.error('[createMeeting] Push error:', err)
+        }
+
+        revalidatePath('/meetings')
+        return { success: true, meetingId: meeting.id }
+    } catch (err: any) {
+        console.error('[createMeeting] Error:', err)
+        return { error: err.message || 'Failed to create meeting.' }
+    }
+}
+
+export async function getMeetings() {
+    const adminClient = createAdminClient()
+    const session = await getSession()
+    if (!session?.id) return []
+
+    try {
+        const { data, error } = await adminClient
+            .from('meetings')
+            .select(`
+                *,
+                host:employees!meetings_host_id_fkey(id, full_name, avatar_url),
+                participants:meeting_participants(
+                    user_id,
+                    user:employees(id, full_name, avatar_url)
+                )
+            `)
+            .order('scheduled_at', { ascending: true })
+
+        if (error) throw error
+
+        // Filter meetings where user is a participant or host (unless Admin)
+        const isAdmin = session.role === 'Administrator'
+        if (isAdmin) return data || []
+
+        return (data || []).filter(m =>
+            m.host_id === session.id ||
+            m.participants.some((p: any) => p.user_id === session.id)
+        )
+    } catch (err) {
+        console.error('[getMeetings] Error:', err)
+        return []
+    }
+}
+
+export async function getMeetingDetails(meetingId: string) {
+    const adminClient = createAdminClient()
+    const session = await getSession()
+    if (!session?.id) return null
+
+    try {
+        const { data, error } = await adminClient
+            .from('meetings')
+            .select(`
+                *,
+                host:employees!meetings_host_id_fkey(id, full_name, avatar_url),
+                participants:meeting_participants(
+                    user_id,
+                    role,
+                    user:employees(id, full_name, avatar_url)
+                )
+            `)
+            .eq('id', meetingId)
+            .single()
+
+        if (error) throw error
+        return data
+    } catch (err) {
+        console.error('[getMeetingDetails] Error:', err)
+        return null
+    }
+}
+
+export async function updateMeetingStatus(meetingId: string, status: 'scheduled' | 'live' | 'ended') {
+    const adminClient = createAdminClient()
+    const session = await getSession()
+    if (!session?.id) return { error: 'Unauthorized' }
+
+    try {
+        if (status === 'live') {
+            const { data: meeting } = await adminClient
+                .from('meetings')
+                .select('scheduled_at')
+                .eq('id', meetingId)
+                .single()
+
+            if (meeting && new Date(meeting.scheduled_at) > new Date()) {
+                return { error: 'Le meeting ne peut pas être démarré avant l\'heure prévue' }
+            }
+        }
+
+        const { error } = await adminClient
+            .from('meetings')
+            .update({ status })
+            .eq('id', meetingId)
+
+        if (error) throw error
+        revalidatePath('/meetings')
+        return { success: true }
+    } catch (err: any) {
+        console.error('[updateMeetingStatus] Error:', err)
+        return { error: err.message }
+    }
+}
+
+export async function deleteMeeting(meetingId: string) {
+    const adminClient = createAdminClient()
+    const session = await getSession()
+    if (!session?.id) return { error: 'Unauthorized' }
+
+    try {
+        const { error } = await adminClient
+            .from('meetings')
+            .delete()
+            .eq('id', meetingId)
+
+        if (error) throw error
+        revalidatePath('/meetings')
+        return { success: true }
+    } catch (err: any) {
+        console.error('[deleteMeeting] Error:', err)
+        return { error: err.message }
+    }
+}
+
+export async function joinMeeting(meetingId: string) {
+    const adminClient = createAdminClient()
+    const session = await getSession()
+    if (!session?.id) return { error: 'Unauthorized' }
+
+    try {
+        const { error } = await adminClient
+            .from('meeting_participants')
+            .update({ joined_at: new Date().toISOString() })
+            .eq('meeting_id', meetingId)
+            .eq('user_id', session.id)
+
+        if (error) throw error
+        return { success: true }
+    } catch (err: any) {
+        console.error('[joinMeeting] Error:', err)
+        return { error: err.message }
+    }
+}
+
+export async function saveMeetingRecording(formData: FormData) {
+    const adminClient = createAdminClient()
+    const session = await getSession()
+    if (!session?.id) return { error: 'Unauthorized' }
+
+    const meetingId = formData.get('meetingId') as string
+    const file = formData.get('file') as File
+
+    if (!file || file.size === 0) return { error: 'No file provided' }
+
+    try {
+        const fileName = `${meetingId}/${Date.now()}.webm`
+        const path = `meeting-recordings/${fileName}`
+
+        const { error: uploadError } = await adminClient
+            .storage
+            .from('call-recordings')
+            .upload(path, file, {
+                contentType: file.type,
+                upsert: false
+            })
+
+        if (uploadError) throw uploadError
+
+        const { data: { publicUrl } } = adminClient
+            .storage
+            .from('call-recordings')
+            .getPublicUrl(path)
+
+        const { error: updateError } = await adminClient
+            .from('meetings')
+            .update({ recording_url: path })
+            .eq('id', meetingId)
+
+        if (updateError) throw updateError
+
+        return { success: true }
+    } catch (err: any) {
+        console.error('[saveMeetingRecording] Error:', err)
+        return { error: err.message || 'Failed to save recording' }
+    }
+}
+
+export async function getUnreadNotifications() {
+    const adminClient = createAdminClient()
+    const session = await getSession()
+    if (!session?.id) return []
+
+    try {
+        const { data, error } = await adminClient
+            .from('meeting_notifications')
+            .select(`
+                *,
+                meeting:meetings!meeting_id(title, scheduled_at, status)
+            `)
+            .eq('user_id', session.id)
+            .eq('seen', false)
+            .lte('trigger_at', new Date().toISOString())
+            .order('trigger_at', { ascending: false })
+
+        if (error) throw error
+        return data || []
+    } catch (err) {
+        console.error('[getUnreadNotifications] Error:', err)
+        return []
+    }
+}
+
+export async function markNotificationSeen(notificationId: string) {
+    const adminClient = createAdminClient()
+    const session = await getSession()
+    if (!session?.id) return { error: 'Unauthorized' }
+
+    try {
+        const { error } = await adminClient
+            .from('meeting_notifications')
+            .update({ seen: true })
+            .eq('id', notificationId)
+            .eq('user_id', session.id)
+
+        if (error) throw error
+        return { success: true }
+    } catch (err: any) {
+        console.error('[markNotificationSeen] Error:', err)
+        return { error: err.message }
+    }
+}

@@ -6,6 +6,7 @@ interface AudioContextType {
     playRingtone: () => void
     stopRingtone: () => void
     playNotificationSound: () => void
+    playSound: (type?: 'default' | 'notification' | 'ready') => void
 }
 
 const AudioContext = createContext<AudioContextType | undefined>(undefined)
@@ -85,8 +86,17 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         }
     }, [])
 
+    const playSound = useCallback((type: 'default' | 'notification' | 'ready' = 'default') => {
+        if (notificationRef.current) {
+            notificationRef.current.currentTime = 0
+            notificationRef.current.play().catch(err => {
+                console.warn('[AudioContext] playSound blocked or failed:', err)
+            })
+        }
+    }, [])
+
     return (
-        <AudioContext.Provider value={{ playRingtone, stopRingtone, playNotificationSound }}>
+        <AudioContext.Provider value={{ playRingtone, stopRingtone, playNotificationSound, playSound }}>
             {children}
         </AudioContext.Provider>
     )
