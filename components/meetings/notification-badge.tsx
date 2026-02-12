@@ -23,7 +23,8 @@ export default function MeetingNotificationBadge({ userId }: { userId: string })
                     table: 'meeting_notifications',
                     filter: `user_id=eq.${userId}`
                 },
-                (payload) => {
+                // @ts-ignore - Payload typing
+                (payload: any) => {
                     console.log('[MeetingNotification] New notification:', payload)
                     setUnreadCount(prev => prev + 1)
                 }

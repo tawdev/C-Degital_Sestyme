@@ -50,7 +50,8 @@ export default function MeetingNotificationListener({ userId }: { userId: string
                     table: 'meeting_notifications',
                     filter: `user_id=eq.${userId}`
                 },
-                (payload) => {
+                // @ts-ignore - Payload typing
+                (payload: any) => {
                     handleNewNotification(payload.new)
                 }
             )
