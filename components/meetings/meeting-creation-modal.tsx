@@ -16,6 +16,8 @@ export default function MeetingCreationModal({ isOpen, onClose }: MeetingCreatio
     const [description, setDescription] = useState('')
     const [scheduledAt, setScheduledAt] = useState('')
     const [type, setType] = useState<'audio' | 'video'>('video')
+    const [duration, setDuration] = useState('30')
+    const [cronIban, setCronIban] = useState('')
     const [selectedIds, setSelectedIds] = useState<string[]>([])
     const [employees, setEmployees] = useState<any[]>([])
     const [loadingEmployees, setLoadingEmployees] = useState(false)
@@ -74,10 +76,7 @@ export default function MeetingCreationModal({ isOpen, onClose }: MeetingCreatio
             formData.append('title', title)
             formData.append('description', description)
 
-            // Convert to ISO string for storage - ensures accuracy across timezones
             const dateObj = new Date(scheduledAt)
-
-            // Simple validation: must be a valid date and must be in the future (with 1min grace)
             if (isNaN(dateObj.getTime())) {
                 setSubmitting(false)
                 return setError('Date/Heure invalide')
@@ -90,6 +89,10 @@ export default function MeetingCreationModal({ isOpen, onClose }: MeetingCreatio
             formData.append('scheduledAt', dateObj.toISOString())
             formData.append('type', type)
             formData.append('userIds', JSON.stringify(selectedIds))
+            formData.append('duration', duration)
+            if (cronIban.trim()) {
+                formData.append('cronIban', cronIban)
+            }
 
             const res = await createMeeting(formData)
             if (res.error) {
@@ -107,7 +110,7 @@ export default function MeetingCreationModal({ isOpen, onClose }: MeetingCreatio
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
                 {/* Header */}
                 <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
                     <div className="flex items-center gap-3 text-indigo-600">
@@ -116,7 +119,7 @@ export default function MeetingCreationModal({ isOpen, onClose }: MeetingCreatio
                         </div>
                         <div>
                             <h3 className="text-xl font-black text-gray-900 leading-tight">Nouvelle Réunion</h3>
-                            <p className="text-xs text-gray-500 font-medium tracking-tight">Planifiez ou démarrez une réunion instantanée</p>
+                            <p className="text-xs text-gray-500 font-medium tracking-tight">Planifiez une réunion avec suivi complet</p>
                         </div>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
@@ -126,7 +129,7 @@ export default function MeetingCreationModal({ isOpen, onClose }: MeetingCreatio
 
                 {/* Body */}
                 <div className="p-8 flex-1 overflow-y-auto space-y-8">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                         {/* Left Column: Details */}
                         <div className="space-y-6">
                             <div>
@@ -138,7 +141,7 @@ export default function MeetingCreationModal({ isOpen, onClose }: MeetingCreatio
                                     type="text"
                                     value={title}
                                     onChange={(e) => setTitle(e.target.value)}
-                                    placeholder="ex: Réunion d'équipe hebdomadaire"
+                                    placeholder="ex: Réunion d'équipe"
                                     className="w-full px-5 py-3.5 bg-gray-50 border border-transparent rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm text-gray-900 font-medium placeholder:text-gray-400 shadow-sm"
                                 />
                             </div>
@@ -151,55 +154,41 @@ export default function MeetingCreationModal({ isOpen, onClose }: MeetingCreatio
                                 <textarea
                                     value={description}
                                     onChange={(e) => setDescription(e.target.value)}
-                                    placeholder="De quoi allons-nous parler ?"
-                                    rows={3}
+                                    placeholder="Sujets à aborder..."
+                                    rows={2}
                                     className="w-full px-5 py-3.5 bg-gray-50 border border-transparent rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm text-gray-900 font-medium placeholder:text-gray-400 shadow-sm resize-none"
                                 />
                             </div>
 
-                            <div className="space-y-4">
-                                <label className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1 ml-1">
-                                    <Calendar className="w-3.5 h-3.5 text-indigo-500" />
-                                    Planification
-                                </label>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <div className="relative group/input">
-                                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within/input:text-indigo-500 transition-colors pointer-events-none">
-                                            <Calendar className="w-4 h-4" />
-                                        </div>
-                                        <input
-                                            type="date"
-                                            value={scheduledAt.split('T')[0] || ''}
-                                            onChange={(e) => {
-                                                const time = scheduledAt.split('T')[1] || '12:00'
-                                                setScheduledAt(`${e.target.value}T${time}`)
-                                            }}
-                                            className="w-full pl-11 pr-4 py-3.5 bg-gray-50 border border-gray-100 rounded-2xl focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white transition-all text-sm font-bold text-gray-900 shadow-sm"
-                                        />
-                                    </div>
-                                    <div className="relative group/input">
-                                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within/input:text-indigo-500 transition-colors pointer-events-none">
-                                            <Clock className="w-4 h-4" />
-                                        </div>
-                                        <input
-                                            type="time"
-                                            lang="fr-FR"
-                                            step="60"
-                                            value={scheduledAt.split('T')[1] || ''}
-                                            onChange={(e) => {
-                                                const date = scheduledAt.split('T')[0] || new Date().toISOString().split('T')[0]
-                                                setScheduledAt(`${date}T${e.target.value}`)
-                                            }}
-                                            className="w-full pl-11 pr-4 py-3.5 bg-gray-50 border border-gray-100 rounded-2xl focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white transition-all text-sm font-bold text-gray-900 shadow-sm"
-                                        />
-                                    </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Date & Heure</label>
+                                    <input
+                                        type="datetime-local"
+                                        value={scheduledAt}
+                                        onChange={(e) => setScheduledAt(e.target.value)}
+                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm font-bold text-gray-900 shadow-sm"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Durée (Min)</label>
+                                    <select
+                                        value={duration}
+                                        onChange={(e) => setDuration(e.target.value)}
+                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm font-bold text-gray-900 shadow-sm"
+                                    >
+                                        <option value="15">15 min</option>
+                                        <option value="30">30 min</option>
+                                        <option value="45">45 min</option>
+                                        <option value="60">1h</option>
+                                        <option value="120">2h</option>
+                                    </select>
                                 </div>
                             </div>
 
-                            <div>
+                            <div className="space-y-4">
                                 <label className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-3 ml-1">
-                                    <Video className="w-3.5 h-3.5 text-indigo-500" />
-                                    Mode de communication
+                                    Mode et Options Spéciales
                                 </label>
                                 <div className="grid grid-cols-2 gap-3">
                                     <button
@@ -208,7 +197,7 @@ export default function MeetingCreationModal({ isOpen, onClose }: MeetingCreatio
                                         className={`flex items-center justify-center gap-3 p-4 rounded-2xl border-2 transition-all ${type === 'video' ? 'border-indigo-600 bg-indigo-50 text-indigo-600 shadow-md' : 'border-gray-50 bg-gray-50 text-gray-500 hover:border-gray-200 hover:bg-white'}`}
                                     >
                                         <Video className="w-5 h-5" />
-                                        <span className="text-xs font-black uppercase tracking-widest text-center">Vidéo + Audio</span>
+                                        <span className="text-[10px] font-black uppercase tracking-widest">Vidéo</span>
                                     </button>
                                     <button
                                         type="button"
@@ -216,9 +205,20 @@ export default function MeetingCreationModal({ isOpen, onClose }: MeetingCreatio
                                         className={`flex items-center justify-center gap-3 p-4 rounded-2xl border-2 transition-all ${type === 'audio' ? 'border-indigo-600 bg-indigo-50 text-indigo-600 shadow-md' : 'border-gray-50 bg-gray-50 text-gray-500 hover:border-gray-200 hover:bg-white'}`}
                                     >
                                         <Clock className="w-5 h-5" />
-                                        <span className="text-xs font-black uppercase tracking-widest text-center">Audio Seul</span>
+                                        <span className="text-[10px] font-black uppercase tracking-widest">Audio</span>
                                     </button>
                                 </div>
+                            </div>
+
+                            <div>
+                                <label className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">Cron IBAN (JSON Optionnel)</label>
+                                <input
+                                    type="text"
+                                    value={cronIban}
+                                    onChange={(e) => setCronIban(e.target.value)}
+                                    placeholder='{"iban":"...", "data":"..."}'
+                                    className="w-full px-5 py-3 bg-gray-50 border border-transparent rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-xs text-gray-900 font-medium placeholder:text-gray-400 shadow-sm"
+                                />
                             </div>
                         </div>
 
@@ -228,7 +228,7 @@ export default function MeetingCreationModal({ isOpen, onClose }: MeetingCreatio
                                 <Users className="w-3.5 h-3.5" />
                                 Inviter des participants ({selectedIds.length})
                             </label>
-                            <div className="flex-1 bg-gray-50/50 rounded-2xl border border-gray-100 overflow-y-auto p-2 space-y-1">
+                            <div className="flex-1 bg-gray-50/50 rounded-2xl border border-gray-100 overflow-y-auto p-3 space-y-1">
                                 {loadingEmployees ? (
                                     <div className="flex items-center justify-center h-full">
                                         <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
@@ -238,8 +238,8 @@ export default function MeetingCreationModal({ isOpen, onClose }: MeetingCreatio
                                         <button
                                             key={emp.id}
                                             onClick={() => toggleUser(emp.id)}
-                                            className={`w-full flex items-center gap-3 p-2.5 rounded-xl transition-all border ${selectedIds.includes(emp.id)
-                                                ? 'bg-white border-indigo-100 shadow-sm'
+                                            className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${selectedIds.includes(emp.id)
+                                                ? 'bg-white border-indigo-100 shadow-sm ring-1 ring-indigo-500/10'
                                                 : 'border-transparent hover:bg-white hover:shadow-sm'
                                                 }`}
                                         >
@@ -259,7 +259,7 @@ export default function MeetingCreationModal({ isOpen, onClose }: MeetingCreatio
                                                 <p className="text-sm font-bold text-gray-900 truncate uppercase tracking-tight">
                                                     {emp.full_name}
                                                 </p>
-                                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{emp.role || 'Employé'}</p>
+                                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest truncate">{emp.role || 'Employé'}</p>
                                             </div>
                                         </button>
                                     ))
@@ -293,8 +293,8 @@ export default function MeetingCreationModal({ isOpen, onClose }: MeetingCreatio
                                 <Loader2 className="w-6 h-6 animate-spin" />
                             ) : (
                                 <>
-                                    <Video className="w-6 h-6" />
-                                    <span className="uppercase tracking-widest text-sm">Organiser la réunion</span>
+                                    <Video className="w-5 h-5" />
+                                    <span className="uppercase tracking-widest text-xs">Planifier le meeting</span>
                                 </>
                             )}
                         </button>

@@ -42,7 +42,8 @@ export default function MeetingList({ meetings }: MeetingListProps) {
                 const now = new Date()
                 const scheduledTime = new Date(meeting.scheduled_at)
                 const isEnded = meeting.status === 'ended'
-                const isReady = now >= scheduledTime && !isEnded
+                const hasRecording = !!meeting.recording_url
+                const isReady = (now >= scheduledTime && !isEnded) || (isEnded && hasRecording)
 
                 return (
                     <div
@@ -123,7 +124,16 @@ export default function MeetingList({ meetings }: MeetingListProps) {
                                     </button>
 
                                     {isEnded ? (
-                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest italic">Le meeting est terminé</p>
+                                        hasRecording ? (
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[10px] font-black text-purple-600 uppercase tracking-widest italic">Sauvegarde d'appel</span>
+                                                <div className="p-3 bg-purple-600 text-white rounded-xl shadow-lg shadow-purple-100 transition-transform group-hover:translate-x-1">
+                                                    <Play className="w-4 h-4 fill-current" />
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest italic">Le meeting est terminé</p>
+                                        )
                                     ) : !isReady ? (
                                         <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest italic animate-pulse">
                                             Le meeting commencera à {format(scheduledTime, 'HH:mm')}

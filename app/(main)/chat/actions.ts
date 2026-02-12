@@ -684,22 +684,50 @@ export async function getCallLogs() {
     }
 
     try {
-        const { data, error } = await adminClient
+        // 1. Fetch Calls
+        const { data: calls, error: callsError } = await adminClient
             .from('calls')
             .select(`
                 *,
                 caller:employees!calls_caller_id_fkey(id, full_name, avatar_url),
                 conversation:conversations(id, name, is_group)
             `)
-            .order('created_at', { ascending: false })
 
-        if (error) throw error
+        if (callsError) throw callsError
+
+        // 2. Fetch Meetings with recordings
+        const { data: meetings, error: meetingsError } = await adminClient
+            .from('meetings')
+            .select(`
+                *,
+                host:employees!meetings_host_id_fkey(id, full_name, avatar_url)
+            `)
+            .not('recording_url', 'is', null)
+
+        if (meetingsError) throw meetingsError
+
+        // 3. Map meetings to call log format
+        const meetingLogs = (meetings || []).map(m => ({
+            id: m.id,
+            created_at: m.created_at,
+            duration: (m.duration || 0) * 60, // Meetings duration is in minutes, convert to seconds for UI
+            type: m.type,
+            recording_url: m.recording_url,
+            caller: m.host,
+            conversation: { name: m.title, is_group: true }, // Treat meetings as group calls for UI
+            is_meeting: true
+        }))
+
+        // 4. Combine and Sort
+        const allLogs = [...(calls || []), ...meetingLogs].sort((a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )
 
         // Generate signed URLs for recordings
-        const logsWithUrls = await Promise.all((data || []).map(async (log) => {
+        const logsWithUrls = await Promise.all(allLogs.map(async (log) => {
             if (!log.recording_url) return log
 
-            const { data: signedData, error: signedError } = await adminClient
+            const { data: signedData } = await adminClient
                 .storage
                 .from('call-recordings')
                 .createSignedUrl(log.recording_url, 3600) // 1 hour
@@ -1325,6 +1353,8 @@ export async function createMeeting(formData: FormData) {
     const scheduledAt = formData.get('scheduledAt') as string
     const type = (formData.get('type') as 'audio' | 'video') || 'video'
     const userIds = JSON.parse(formData.get('userIds') as string) as string[]
+    const duration = parseInt(formData.get('duration') as string) || 30
+    const cronIban = formData.get('cronIban') ? JSON.parse(formData.get('cronIban') as string) : null
 
     try {
         // 1. Create meeting
@@ -1334,9 +1364,12 @@ export async function createMeeting(formData: FormData) {
                 title,
                 description,
                 host_id: session.id,
+                created_by: session.id, // Explicitly set created_by
                 scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : new Date().toISOString(),
                 type,
-                status: 'scheduled'
+                status: 'planned', // Use 'planned' as per new requirement
+                duration,
+                cron_iban: cronIban
             })
             .select('id')
             .single()
@@ -1486,6 +1519,16 @@ export async function getMeetingDetails(meetingId: string) {
             .single()
 
         if (error) throw error
+
+        // Map recording URL to a signed URL if it exists
+        if (data?.recording_url) {
+            const { data: signedData } = await adminClient
+                .storage
+                .from('call-recordings')
+                .createSignedUrl(data.recording_url, 3600) // 1 hour
+            data.signed_url = signedData?.signedUrl || null
+        }
+
         return data
     } catch (err) {
         console.error('[getMeetingDetails] Error:', err)
@@ -1594,9 +1637,16 @@ export async function saveMeetingRecording(formData: FormData) {
             .from('call-recordings')
             .getPublicUrl(path)
 
+        const updateData: any = { recording_url: path }
+        if (file.type.startsWith('audio/')) {
+            updateData.audio_url = publicUrl
+        } else if (file.type.startsWith('video/')) {
+            updateData.video_url = publicUrl
+        }
+
         const { error: updateError } = await adminClient
             .from('meetings')
-            .update({ recording_url: path })
+            .update(updateData)
             .eq('id', meetingId)
 
         if (updateError) throw updateError

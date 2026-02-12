@@ -41,7 +41,8 @@ export default async function DashboardPage() {
         { data: pendingProjects },
         { data: completedProjectsCountData },
         projectStats,
-        { count: callsCount }
+        { count: callsCount },
+        { count: meetingsRecordedCount }
     ] = await Promise.all([
         supabase.from('projects').select('*', { count: 'exact', head: true }),
         supabase.from('employees').select('*', { count: 'exact', head: true }),
@@ -51,7 +52,8 @@ export default async function DashboardPage() {
         supabase.from('projects').select('id').eq('status', 'pending'),
         supabase.from('projects').select('id').eq('status', 'completed'),
         getProjectStats(),
-        supabase.from('calls').select('*', { count: 'exact', head: true })
+        supabase.from('calls').select('*', { count: 'exact', head: true }).not('recording_url', 'is', null),
+        supabase.from('meetings').select('*', { count: 'exact', head: true }).not('recording_url', 'is', null)
     ])
 
     // Calculate real percentage changes
@@ -105,14 +107,14 @@ export default async function DashboardPage() {
             change: projectCount ? Math.round((completedProjectsCountData?.length || 0) / projectCount * 100) : 0
         },
         {
-            name: 'Appels enregistrés',
-            value: callsCount || 0,
+            name: 'Communications sauvées',
+            value: (callsCount || 0) + (meetingsRecordedCount || 0),
             icon: Video,
             color: 'from-purple-600 to-indigo-700',
             bgColor: 'bg-purple-50',
             iconColor: 'text-purple-600',
             link: '/calls',
-            description: 'Historique des appels',
+            description: 'Historique des enregistrements',
             change: 0
         }
     ]

@@ -5,8 +5,10 @@ import { useParams, useRouter } from 'next/navigation'
 import MeetingRoom from '@/components/meetings/meeting-room'
 import { getMeetingDetails } from '@/app/(main)/chat/actions'
 import { getSession } from '@/app/auth/actions'
-import { Loader2, ShieldAlert, ArrowLeft } from 'lucide-react'
+import { Loader2, ShieldAlert, ArrowLeft, Play, Calendar, Clock, Video, User } from 'lucide-react'
 import Link from 'next/link'
+import { format } from 'date-fns'
+import { fr } from 'date-fns/locale'
 
 export default function MeetingPage() {
     const params = useParams()
@@ -44,8 +46,8 @@ export default function MeetingPage() {
         }
 
         // Check meeting status
-        if (meetingData.status === 'ended') {
-            setError('Cette réunion est terminée')
+        if (meetingData.status === 'ended' && !meetingData.recording_url) {
+            setError('Cette réunion est terminée et aucun enregistrement n\'est disponible.')
             setLoading(false)
             return
         }
@@ -108,6 +110,85 @@ export default function MeetingPage() {
                         <ArrowLeft className="w-4 h-4" />
                         Retour au Hub
                     </Link>
+                </div>
+            </div>
+        )
+    }
+
+    if (meeting?.status === 'ended' && meeting?.signed_url) {
+        return (
+            <div className="fixed inset-0 bg-gray-950 flex flex-col items-center justify-center p-6 lg:p-12 overflow-y-auto">
+                <div className="w-full max-w-5xl space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-1000 pb-12">
+                    {/* Replay Header */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                        <div className="space-y-2">
+                            <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight">{meeting.title}</h1>
+                            <div className="flex items-center gap-3">
+                                <span className="px-3 py-1 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-lg shadow-lg shadow-indigo-500/20">
+                                    Replay Session
+                                </span>
+                                <p className="text-gray-400 font-bold text-xs">Cette réunion a été enregistrée le {format(new Date(meeting.scheduled_at), "d MMMM yyyy", { locale: fr })}</p>
+                            </div>
+                        </div>
+                        <Link
+                            href="/meetings"
+                            className="flex items-center gap-3 px-8 py-4 bg-white/5 hover:bg-white/10 rounded-2xl text-white font-bold transition-all border border-white/10 active:scale-[0.98]"
+                        >
+                            <ArrowLeft className="w-5 h-5" />
+                            Retour au Hub
+                        </Link>
+                    </div>
+
+                    {/* Video Player Section */}
+                    <div className="aspect-video bg-black rounded-[2.5rem] border border-white/5 shadow-2xl shadow-indigo-500/10 overflow-hidden relative group ring-1 ring-white/10">
+                        <video
+                            src={meeting.signed_url}
+                            controls
+                            className="w-full h-full object-contain"
+                            autoPlay={false}
+                        />
+                    </div>
+
+                    {/* Meta Data Section */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="p-8 bg-white/5 rounded-[2rem] border border-white/5 backdrop-blur-sm space-y-4">
+                            <div className="p-3 bg-indigo-500/10 rounded-xl w-fit">
+                                <User className="w-5 h-5 text-indigo-400" />
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Organisateur</p>
+                                <p className="text-white font-black text-lg">{meeting.host?.full_name}</p>
+                            </div>
+                        </div>
+
+                        <div className="p-8 bg-white/5 rounded-[2rem] border border-white/5 backdrop-blur-sm space-y-4">
+                            <div className="p-3 bg-purple-500/10 rounded-xl w-fit">
+                                <Clock className="w-5 h-5 text-purple-400" />
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Durée Prévue</p>
+                                <p className="text-white font-black text-lg">{meeting.duration || 30} minutes</p>
+                            </div>
+                        </div>
+
+                        <div className="p-8 bg-white/5 rounded-[2rem] border border-white/5 backdrop-blur-sm space-y-4">
+                            <div className="p-3 bg-blue-500/10 rounded-xl w-fit">
+                                <Calendar className="w-5 h-5 text-blue-400" />
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Date du meeting</p>
+                                <p className="text-white font-black text-lg">{format(new Date(meeting.scheduled_at), "HH:mm", { locale: fr })} heure locale</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Description if any */}
+                    {meeting.description && (
+                        <div className="p-8 bg-white/5 rounded-[2rem] border border-white/5 backdrop-blur-sm">
+                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3">Notes de session</p>
+                            <p className="text-gray-300 font-medium leading-relaxed">{meeting.description}</p>
+                        </div>
+                    )}
                 </div>
             </div>
         )
