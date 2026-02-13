@@ -38,7 +38,7 @@ export default function MeetingsPage() {
 
             channel = supabase.channel('meetings-realtime')
                 // 0. Listen for Manual Broadcasts (Reliable fallback)
-                .on('broadcast', { event: 'meeting-update' }, (payload) => {
+                .on('broadcast', { event: 'meeting-update' }, (payload: any) => {
                     console.log('Broadcast received:', payload)
                     const p = payload.payload
                     if (p && p.participantIds && Array.isArray(p.participantIds)) {
@@ -57,7 +57,7 @@ export default function MeetingsPage() {
                         table: 'meeting_participants',
                         filter: `user_id=eq.${user.id}`
                     },
-                    (payload) => {
+                    (payload: any) => {
                         console.log('New meeting invite!', payload)
                         loadMeetings(false)
                     }
@@ -71,7 +71,7 @@ export default function MeetingsPage() {
                         table: 'meeting_participants',
                         filter: `user_id=eq.${user.id}`
                     },
-                    (payload) => {
+                    (payload: any) => {
                         console.log('Removed from meeting!', payload)
                         loadMeetings(false)
                     }
@@ -84,7 +84,7 @@ export default function MeetingsPage() {
                         schema: 'public',
                         table: 'meetings'
                     },
-                    (payload) => {
+                    (payload: any) => {
                         console.log('Meeting update!', payload)
                         loadMeetings(false)
                     }
