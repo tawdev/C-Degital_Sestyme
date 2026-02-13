@@ -6,6 +6,7 @@ import { getMeetings } from '@/app/(main)/chat/actions'
 import MeetingList from '@/components/meetings/meeting-list'
 import MeetingCreationModal from '@/components/meetings/meeting-creation-modal'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
 
 export default function MeetingsPage() {
     const [meetings, setMeetings] = useState<any[]>([])
@@ -18,12 +19,85 @@ export default function MeetingsPage() {
         loadMeetings()
     }, [])
 
-    async function loadMeetings() {
-        setLoading(true)
+    async function loadMeetings(showLoading = true) {
+        if (showLoading) setLoading(true)
         const data = await getMeetings()
         setMeetings(data)
         setLoading(false)
     }
+
+    // Real-time subscription
+    useEffect(() => {
+        const supabase = createClient()
+        let channel: ReturnType<typeof supabase.channel>
+
+        async function setupRealtime() {
+            const { data: { user } } = await supabase.auth.getUser()
+
+            if (!user) return
+
+            channel = supabase.channel('meetings-realtime')
+                // 0. Listen for Manual Broadcasts (Reliable fallback)
+                .on('broadcast', { event: 'meeting-update' }, (payload) => {
+                    console.log('Broadcast received:', payload)
+                    const p = payload.payload
+                    if (p && p.participantIds && Array.isArray(p.participantIds)) {
+                        if (p.participantIds.includes(user.id)) {
+                            console.log('Refreshing meetings via broadcast...')
+                            loadMeetings(false)
+                        }
+                    }
+                })
+                // 1. Listen for new invites (User added to meeting_participants)
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'INSERT',
+                        schema: 'public',
+                        table: 'meeting_participants',
+                        filter: `user_id=eq.${user.id}`
+                    },
+                    (payload) => {
+                        console.log('New meeting invite!', payload)
+                        loadMeetings(false)
+                    }
+                )
+                // 2. Listen for removal (User removed from meeting_participants)
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'DELETE',
+                        schema: 'public',
+                        table: 'meeting_participants',
+                        filter: `user_id=eq.${user.id}`
+                    },
+                    (payload) => {
+                        console.log('Removed from meeting!', payload)
+                        loadMeetings(false)
+                    }
+                )
+                // 3. Listen for meeting STATUS updates or DELETIONS
+                .on(
+                    'postgres_changes',
+                    {
+                        event: '*',
+                        schema: 'public',
+                        table: 'meetings'
+                    },
+                    (payload) => {
+                        console.log('Meeting update!', payload)
+                        loadMeetings(false)
+                    }
+                )
+                .subscribe()
+        }
+
+        setupRealtime()
+
+        return () => {
+            if (channel) supabase.removeChannel(channel)
+        }
+    }, [])
 
     const filteredMeetings = meetings.filter(m => {
         const matchesSearch = m.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -79,8 +153,8 @@ export default function MeetingsPage() {
                                 key={status}
                                 onClick={() => setFilterStatus(status)}
                                 className={`px-5 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${filterStatus === status
-                                        ? 'bg-gray-900 text-white shadow-xl translate-y-[-2px]'
-                                        : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
+                                    ? 'bg-gray-900 text-white shadow-xl translate-y-[-2px]'
+                                    : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
                                     }`}
                             >
                                 {status === 'all' ? 'Toutes' :

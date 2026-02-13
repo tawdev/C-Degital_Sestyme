@@ -1443,6 +1443,21 @@ export async function createMeeting(formData: FormData) {
             console.error('[createMeeting] Error inserting notifications:', notifError)
         }
 
+        // --- BROADCAST REALTIME EVENT ---
+        try {
+            await adminClient.channel('meetings-realtime').send({
+                type: 'broadcast',
+                event: 'meeting-update',
+                payload: {
+                    action: 'create',
+                    meetingId: meeting.id,
+                    participantIds: participantIds
+                }
+            })
+        } catch (broadcastErr) {
+            console.error('[createMeeting] Broadcast error:', broadcastErr)
+        }
+
         // Send immediate push notification to all participants except host
         try {
             const { sendPushNotification } = await import('@/lib/push-notifications')
@@ -1574,12 +1589,43 @@ export async function deleteMeeting(meetingId: string) {
     if (!session?.id) return { error: 'Unauthorized' }
 
     try {
+        // Fetch participants for broadcast before deletion
+        const { data: participants } = await adminClient
+            .from('meeting_participants')
+            .select('user_id')
+            .eq('meeting_id', meetingId)
+
+        const { data: meeting } = await adminClient
+            .from('meetings')
+            .select('host_id')
+            .eq('id', meetingId)
+            .single()
+
+        const allUserIds = [
+            ...(participants?.map(p => p.user_id) || []),
+            meeting?.host_id
+        ].filter(Boolean)
+
         const { error } = await adminClient
             .from('meetings')
             .delete()
             .eq('id', meetingId)
 
         if (error) throw error
+
+        // Broadcast delete
+        try {
+            await adminClient.channel('meetings-realtime').send({
+                type: 'broadcast',
+                event: 'meeting-update',
+                payload: {
+                    action: 'delete',
+                    meetingId,
+                    participantIds: allUserIds
+                }
+            })
+        } catch (e) { console.error(e) }
+
         revalidatePath('/meetings')
         return { success: true }
     } catch (err: any) {
