@@ -648,8 +648,8 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
                                     <div className="flex items-center gap-2">
                                         <p className="text-xs md:text-sm font-black text-white uppercase tracking-wider">{currentUser.full_name} (Vous)</p>
                                         <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest ${meeting.host_id === currentUser.id
-                                                ? 'bg-indigo-600/20 border border-indigo-500/30 text-indigo-400'
-                                                : 'bg-amber-500/20 border border-amber-500/30 text-amber-500'
+                                            ? 'bg-indigo-600/20 border border-indigo-500/30 text-indigo-400'
+                                            : 'bg-amber-500/20 border border-amber-500/30 text-amber-500'
                                             }`}>
                                             {meeting.host_id === currentUser.id ? 'Host' : 'Participant'}
                                         </span>

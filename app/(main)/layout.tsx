@@ -13,7 +13,8 @@ import { RealtimeProvider } from '@/context/realtime-context'
 import { AudioProvider } from '@/context/audio-context'
 import { NotificationProvider } from '@/context/notification-context'
 import MeetingNotificationBadge from '@/components/meetings/notification-badge'
-import MeetingNotificationListener from '@/components/meetings/notification-listener'
+import MeetingNotification from '@/components/meetings/meeting-notification'
+
 
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
     const session = await getSession()
@@ -52,8 +53,8 @@ export default async function MainLayout({ children }: { children: React.ReactNo
                 <CallProvider currentUser={currentUser}>
                     <RealtimeProvider currentUserId={session.id}>
                         <div className="min-h-screen flex flex-col bg-gray-50">
-                            {/* Global Notification Listener for Meetings */}
-                            <MeetingNotificationListener userId={session.id} />
+                            {/* Global Notification */}
+                            <MeetingNotification />
                             {/* Modern Header */}
                             <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
                                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
