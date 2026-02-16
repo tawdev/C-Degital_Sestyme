@@ -1640,6 +1640,21 @@ export async function joinMeeting(meetingId: string) {
     if (!session?.id) return { error: 'Unauthorized' }
 
     try {
+        // Check if meeting exists and is not ended
+        const { data: meeting, error: fetchError } = await adminClient
+            .from('meetings')
+            .select('status')
+            .eq('id', meetingId)
+            .single()
+
+        if (fetchError || !meeting) {
+            return { error: 'Meeting not found' }
+        }
+
+        if (meeting.status === 'ended') {
+            return { error: 'This meeting has ended and cannot be joined' }
+        }
+
         const { error } = await adminClient
             .from('meeting_participants')
             .update({ joined_at: new Date().toISOString() })

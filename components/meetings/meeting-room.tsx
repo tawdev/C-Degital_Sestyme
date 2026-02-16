@@ -5,8 +5,10 @@ import {
     Mic, MicOff, Video, VideoOff, ScreenShare, StopCircle,
     MessageSquare, Users, Settings, PhoneOff,
     MoreVertical, Maximize2, Monitor, Loader2,
-    Send, CheckCheck, Radio
+    Send, CheckCheck, Radio, LayoutGrid, Sidebar
 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import VideoCard from './video-card'
 import { createClient } from '@/lib/supabase/client'
 import { saveMeetingRecording, updateMeetingStatus } from '@/app/(main)/chat/actions'
 import EmployeeAvatar from '@/components/employee-avatar'
@@ -48,8 +50,15 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
 
     // Setup local media
     useEffect(() => {
-        startLocalStream()
+        let cleanup: (() => void) | undefined
+
+        const init = async () => {
+            cleanup = await startLocalStream()
+        }
+        init()
+
         return () => {
+            cleanup?.()
             stopLocalStream()
             cleanupPeerConnections()
         }
@@ -66,8 +75,8 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
             const localVideo = document.getElementById('local-video') as HTMLVideoElement
             if (localVideo) localVideo.srcObject = stream
 
-            // Join signal channel
-            joinMeetingSignal()
+            // Join signal channel and return cleanup
+            return joinMeetingSignal()
         } catch (err) {
             console.error('Error accessing media devices:', err)
         }
@@ -113,18 +122,40 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
                 })
             })
             .on('broadcast', { event: 'request-state' }, ({ payload }: { payload: { from: string } }) => {
-                // Someone just joined, send them our current state
-                sendSignal(payload.from, {
+                const { from } = payload
+
+                // Check if we already have a connection for this user
+                const existingPC = peerConnections.current.get(from)
+                if (existingPC) {
+                    const state = existingPC.connectionState
+                    console.log(`[WebRTC] Received request-state from ${from}. Existing PC state: ${state}`)
+
+                    // Only clean up if the connection is actually broken
+                    // Do NOT clean up if it's new, connecting, or connected
+                    if (state === 'failed' || state === 'disconnected' || state === 'closed') {
+                        console.warn(`[WebRTC] Cleaning up broken connection (${state}) for ${from}`)
+                        handleParticipantLeave(from)
+                    } else {
+                        console.log(`[WebRTC] Connection to ${from} is ${state}, keeping it`)
+                    }
+                }
+
+                // Send current media state to the joining user
+                sendSignal(from, {
                     type: 'media-state',
                     isMuted: isMuted,
                     isCameraOff: isCameraOff
                 })
+
                 if (isRecording) {
-                    sendSignal(payload.from, {
+                    sendSignal(from, {
                         type: 'recording-state',
                         isRecording: true
                     })
                 }
+
+                // NOTE: Connection initiation is handled by presence sync ONLY
+                // This prevents duplicate connection attempts and race conditions
             })
             .on('presence', { event: 'sync' }, () => {
                 const state = channel.presenceState()
@@ -138,36 +169,70 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
                 })
 
                 const uniqueMembers = Array.from(memberMap.values())
+
+                // CRITICAL FIX: Include current user in participants list
+                // This ensures all users see the same participant list
+                const allParticipants = [
+                    ...uniqueMembers,
+                    { id: currentUser.id, name: currentUser.full_name, avatar: currentUser.avatar_url }
+                ]
+
+                // Deduplicate in case current user is already in the list
+                const participantMap = new Map()
+                allParticipants.forEach(p => participantMap.set(p.id, p))
+                const finalParticipants = Array.from(participantMap.values())
+
                 const memberIds = new Set(uniqueMembers.map(m => m.id))
 
-                console.log(`[WebRTC] Presence Sync: ${uniqueMembers.length} participants`, Array.from(memberIds))
-                setParticipants(uniqueMembers)
+                console.log(`[WebRTC] Presence Sync: ${finalParticipants.length} total participants (${uniqueMembers.length} remote)`, Array.from(participantMap.keys()))
+                setParticipants(finalParticipants)
 
                 // Cleanup connections for people who left
                 peerConnections.current.forEach((pc, id) => {
                     if (!memberIds.has(id)) {
+                        console.log(`[WebRTC] Cleaning up connection to ${id} (left)`)
                         handleParticipantLeave(id)
                     }
                 })
 
-                // Identify members to connect to
+                // Identify members to connect to (ONLY mechanism for connection establishment)
                 uniqueMembers.forEach(member => {
                     if (member.id !== currentUser.id && !peerConnections.current.has(member.id)) {
-                        // Tie-breaker to decide who initiates
+                        // Tie-breaker to decide who initiates (lexicographic comparison)
                         const shouldInitiate = currentUser.id < member.id
-                        console.log(`[WebRTC] Peer ${member.id} found. Me: ${currentUser.id}. Should initiate: ${shouldInitiate}`)
+                        console.log(`[WebRTC] New peer ${member.id} detected. Me: ${currentUser.id}. Should initiate: ${shouldInitiate}`)
 
                         if (shouldInitiate) {
+                            // Validate before initiating
+                            if (!localStreamRef.current) {
+                                console.warn(`[WebRTC] Cannot initiate to ${member.id}: local stream not ready`)
+                                return
+                            }
+                            console.log(`[WebRTC] ✓ Initiating connection to ${member.id}`)
                             initiateConnection(member.id)
+                        } else {
+                            console.log(`[WebRTC] ⏳ Waiting for ${member.id} to initiate connection`)
                         }
                     }
                 })
             })
-            .on('presence', { event: 'leave' }, ({ leftPresences }: { leftPresences: any[] }) => {
+            .on('presence', { event: 'leave' }, async ({ leftPresences }: { leftPresences: any[] }) => {
                 leftPresences.forEach(presence => {
                     const userId = presence.user?.id
                     if (userId) handleParticipantLeave(userId)
                 })
+
+                // Get current presence state AFTER the leave event
+                const currentState = channel.presenceState()
+                const remainingUsers = Object.values(currentState).flat()
+
+                console.log(`[WebRTC] After leave event: ${remainingUsers.length} users remaining`)
+
+                // If no one left (including us), terminate meeting
+                if (remainingUsers.length === 0) {
+                    console.log('[WebRTC] No participants remaining, terminating meeting')
+                    await updateMeetingStatus(meetingId, 'ended')
+                }
             })
             .subscribe(async (status: string) => {
                 if (status === 'SUBSCRIBED') {
@@ -191,6 +256,11 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
                     }, 1000)
                 }
             })
+
+        return () => {
+            console.log('[WebRTC] Leaving signaling channel')
+            supabase.removeChannel(channel)
+        }
     }
 
     const handleParticipantLeave = async (userId: string) => {
@@ -359,7 +429,17 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
                 return
             }
 
-            if (!pc) pc = createPeerConnection(from)
+            if (!pc) {
+                pc = createPeerConnection(from)
+            } else {
+                // Check if we're already in a stable state with remote description set
+                // This prevents duplicate offer processing
+                if (pc.signalingState === 'stable' && pc.remoteDescription) {
+                    console.warn(`[WebRTC] Ignoring duplicate offer from ${from} (already in stable state)`)
+                    return
+                }
+            }
+
             try {
                 await pc.setRemoteDescription(new RTCSessionDescription(sdp))
                 const answer = await pc.createAnswer()
@@ -555,15 +635,23 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
     const leaveMeeting = async () => {
         if (isRecording) stopRecording()
 
+        // Untrack presence FIRST to ensure proper cleanup
+        if (channelRef.current) {
+            await channelRef.current.untrack()
+            console.log('[WebRTC] Untracked presence')
+        }
+
+        // Small delay to let presence propagate
+        await new Promise(resolve => setTimeout(resolve, 100))
+
         // Broadcast leave signal for immediate cleanup
         sendSignal('everyone', { type: 'leave' })
 
         stopLocalStream()
         cleanupPeerConnections()
 
-        if (meeting.host_id === currentUser.id) {
-            await updateMeetingStatus(meetingId, 'ended')
-        }
+        // NOTE: Meeting termination is handled by presence leave handler
+        // Meeting only ends when the last participant leaves
 
         router.push('/meetings')
     }
@@ -628,141 +716,126 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
             </div>
 
             {/* Main Content Area */}
-            <div className="flex-1 flex overflow-hidden">
-                {/* Video Grid Container */}
-                <div className="flex-1 p-4 md:p-8 flex flex-col items-center justify-center relative bg-gray-900/40 overflow-y-auto custom-scrollbar">
-                    <div className={`w-full max-w-7xl mx-auto grid gap-4 md:gap-6 items-center justify-center transition-all duration-500 ${participants.length === 1 ? 'grid-cols-1 max-w-4xl' :
-                        participants.length === 2 ? 'grid-cols-1 md:grid-cols-2 max-w-6xl' :
-                            participants.length === 3 ? 'grid-cols-1 md:grid-cols-2 max-w-6xl' :
-                                participants.length === 4 ? 'grid-cols-1 md:grid-cols-2 max-w-6xl' :
-                                    'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
-                        }`}>
-                        {/* Local Video Card */}
-                        <div className={`relative aspect-video bg-gray-800 rounded-3xl overflow-hidden border border-white/5 shadow-2xl group transition-all duration-500 hover:shadow-indigo-500/10 ${participants.length === 3 ? 'md:col-span-1' : ''
-                            }`}>
-                            <video id="local-video" autoPlay muted playsInline className="w-full h-full object-cover scale-x-[-1]" />
+            <div className="flex-1 flex overflow-hidden relative">
+                <div className="flex-1 flex flex-col relative overflow-hidden">
+                    {/* Layout Container */}
+                    <div className="flex-1 p-4 md:p-6 flex items-center justify-center overflow-y-auto custom-scrollbar">
+                        <AnimatePresence mode="popLayout">
+                            {sharingUser || isScreenSharing ? (
+                                /* PRESENTATION MODE */
+                                <motion.div
+                                    key="presentation-layout"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className="w-full h-full flex flex-col md:flex-row gap-4 max-w-[1600px] mx-auto"
+                                >
+                                    {/* Main Stage (Screen Share) */}
+                                    <div className="flex-1 min-h-[50vh] md:h-full relative flex flex-col">
+                                        {(() => {
+                                            const presenterId = isScreenSharing ? currentUser.id : sharingUser!
+                                            const isLocalPresenter = presenterId === currentUser.id
+                                            const presenter = isLocalPresenter ? currentUser : participants.find(p => p.id === presenterId) || { id: presenterId, name: 'Unknown', avatar: null }
 
-                            {/* Participant Info Overlay */}
-                            <div className="absolute inset-x-0 bottom-0 p-4 md:p-6 bg-gradient-to-t from-black/90 via-black/40 to-transparent flex items-end justify-between z-20">
-                                <div className="flex flex-col gap-1">
-                                    <div className="flex items-center gap-2">
-                                        <p className="text-xs md:text-sm font-black text-white uppercase tracking-wider">{currentUser.full_name} (Vous)</p>
-                                        <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest ${meeting.host_id === currentUser.id
-                                            ? 'bg-indigo-600/20 border border-indigo-500/30 text-indigo-400'
-                                            : 'bg-amber-500/20 border border-amber-500/30 text-amber-500'
-                                            }`}>
-                                            {meeting.host_id === currentUser.id ? 'Host' : 'Participant'}
-                                        </span>
-                                    </div>
-                                    <p className="text-[9px] font-bold text-white/40 uppercase tracking-[0.2em]">Membre</p>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className={`w-2 h-2 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.4)]`} />
-                                </div>
-                            </div>
+                                            // Determine stream for presenter
+                                            let presentationStream = null
+                                            if (isLocalPresenter) {
+                                                presentationStream = screenStreamRef.current
+                                            } else {
+                                                presentationStream = remoteStreams.get(presenterId) || null
+                                            }
 
-                            {/* Status Overlays */}
-                            {isCameraOff && (
-                                <div className="absolute inset-0 bg-gray-900 flex flex-col items-center justify-center gap-4 z-10 transition-all duration-500">
-                                    <div className="relative">
-                                        <EmployeeAvatar avatarUrl={currentUser.avatar_url} fullName={currentUser.full_name} className="w-20 h-20 md:w-28 md:h-28 text-2xl border-4 border-white/5 shadow-2xl" />
-                                        <div className="absolute -bottom-2 -right-2 p-3 bg-gray-950 rounded-full border border-white/10 shadow-xl">
-                                            <VideoOff className="w-6 h-6 text-red-500" />
-                                        </div>
+                                            const state = participantStates.get(presenterId) || { isMuted: false, isCameraOff: false }
+
+                                            return (
+                                                <VideoCard
+                                                    key={presenterId}
+                                                    participant={{ ...presenter, id: presenterId, name: isLocalPresenter ? currentUser.full_name : (presenter as any).name, avatar: isLocalPresenter ? currentUser.avatar_url : (presenter as any).avatar }}
+                                                    stream={presentationStream}
+                                                    isLocal={isLocalPresenter}
+                                                    isMuted={isLocalPresenter ? isMuted : state.isMuted}
+                                                    isCameraOff={false} // Always show screen share
+                                                    isSharing={true}
+                                                    isHost={meeting.host_id === presenterId}
+                                                    connectionState={connectionStates.get(presenterId)}
+                                                    isMainStage={true}
+                                                    className="w-full h-full"
+                                                />
+                                            )
+                                        })()}
                                     </div>
-                                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">Caméra désactivée</p>
-                                </div>
+
+                                    {/* Sidebar (Other Participants) */}
+                                    <div className="h-32 md:h-full md:w-80 flex md:flex-col gap-3 overflow-x-auto md:overflow-y-auto md:overflow-x-hidden custom-scrollbar pb-2 md:pb-0 shrink-0">
+                                        {participants
+                                            .filter(p => !((isScreenSharing && p.id === currentUser.id) || (sharingUser && p.id === sharingUser))) // Exclude presenter
+                                            .map((p) => {
+                                                const isLocal = p.id === currentUser.id
+                                                const stream = isLocal ? localStreamRef.current : (remoteStreams.get(p.id) || null)
+                                                const state = isLocal ? { isMuted, isCameraOff } : (participantStates.get(p.id) || { isMuted: false, isCameraOff: false })
+
+                                                return (
+                                                    <VideoCard
+                                                        key={p.id}
+                                                        participant={p.id === currentUser.id ? { ...currentUser, name: currentUser.full_name, avatar: currentUser.avatar_url } : p}
+                                                        stream={stream}
+                                                        isLocal={isLocal}
+                                                        isMuted={state.isMuted}
+                                                        isCameraOff={state.isCameraOff}
+                                                        isSharing={false}
+                                                        isHost={meeting.host_id === p.id}
+                                                        connectionState={connectionStates.get(p.id)}
+                                                        className="aspect-video w-48 md:w-full shrink-0"
+                                                    />
+                                                )
+                                            })}
+                                        {/* If I am NOT presenting, show ME in sidebar */}
+                                        {/* The filter above handles this. If I'm screen sharing, I'm excluded. If sharingUser is someone else, I am NOT excluded, so I appear in sidebar. Correct. */}
+                                    </div>
+                                </motion.div>
+                            ) : (
+                                /* GRID MODE (Default) */
+                                <motion.div
+                                    key="grid-layout"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className={`w-full max-w-7xl mx-auto grid gap-4 md:gap-6 items-center justify-center transition-all duration-500 ${participants.length === 1 ? 'grid-cols-1 max-w-4xl' :
+                                        participants.length === 2 ? 'grid-cols-1 md:grid-cols-2 max-w-6xl' :
+                                            participants.length === 3 ? 'grid-cols-1 md:grid-cols-2 max-w-6xl' :
+                                                participants.length === 4 ? 'grid-cols-1 md:grid-cols-2 max-w-6xl' :
+                                                    'grid-cols-2 md:grid-cols-3'
+                                        }`}
+                                >
+                                    {participants.map((p, idx) => {
+                                        const isLocal = p.id === currentUser.id
+                                        const stream = isLocal ? localStreamRef.current : (remoteStreams.get(p.id) || null)
+                                        const state = isLocal ? { isMuted, isCameraOff } : (participantStates.get(p.id) || { isMuted: false, isCameraOff: false })
+
+                                        return (
+                                            <VideoCard
+                                                key={p.id}
+                                                participant={p.id === currentUser.id ? { ...currentUser, name: currentUser.full_name, avatar: currentUser.avatar_url } : p}
+                                                stream={stream}
+                                                isLocal={isLocal}
+                                                isMuted={state.isMuted}
+                                                isCameraOff={state.isCameraOff}
+                                                isSharing={false}
+                                                isHost={meeting.host_id === p.id}
+                                                connectionState={connectionStates.get(p.id)}
+                                                className={`w-full aspect-video ${participants.length === 3 && idx === 2 ? 'md:col-span-1' : ''}`}
+                                            />
+                                        )
+                                    })}
+                                </motion.div>
                             )}
-
-                            {isMuted && (
-                                <div className="absolute top-4 right-4 p-3 bg-red-500 rounded-2xl shadow-xl shadow-red-500/20 z-20 border border-white/10 animate-in zoom-in-50 duration-200">
-                                    <MicOff className="w-5 h-5 text-white" />
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Remote Video Cards */}
-                        {participants.filter(p => p.id !== currentUser.id).map((p) => {
-                            const stream = remoteStreams.get(p.id)
-                            const connectionState = connectionStates.get(p.id) || 'new'
-                            const state = participantStates.get(p.id) || { isMuted: false, isCameraOff: false, isRecording: false }
-                            const isHost = p.id === meeting.host_id
-
-                            return (
-                                <div key={p.id} className="relative aspect-video bg-gray-800 rounded-3xl overflow-hidden border border-white/5 shadow-2xl group transition-all duration-500 hover:shadow-indigo-500/10">
-                                    {stream ? (
-                                        <video
-                                            autoPlay
-                                            playsInline
-                                            ref={(el) => { if (el) el.srcObject = stream }}
-                                            className="w-full h-full object-cover"
-                                        />
-                                    ) : (
-                                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 bg-gray-900">
-                                            <div className="relative">
-                                                <EmployeeAvatar avatarUrl={p.avatar} fullName={p.name} className="w-20 h-20 md:w-24 md:h-24 text-xl border-4 border-white/5 shadow-2xl" />
-                                                <div className="absolute -bottom-2 -right-2 p-2 bg-indigo-600 rounded-full border-4 border-gray-900">
-                                                    <Loader2 className="w-4 h-4 animate-spin text-white" />
-                                                </div>
-                                            </div>
-                                            <div className="flex flex-col items-center gap-2">
-                                                <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em]">
-                                                    {connectionState === 'connecting' ? 'Négociation...' :
-                                                        connectionState === 'failed' ? 'Échec de connexion' : 'Attente du signal...'}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Participant Info Overlay */}
-                                    <div className="absolute inset-x-0 bottom-0 p-4 md:p-6 bg-gradient-to-t from-black/90 via-black/40 to-transparent flex items-end justify-between z-20">
-                                        <div className="flex flex-col gap-1">
-                                            <div className="flex items-center gap-2">
-                                                <p className="text-xs md:text-sm font-black text-white uppercase tracking-wider">{p.name}</p>
-                                                {isHost && (
-                                                    <span className="px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/30 text-[8px] font-black text-amber-500 uppercase tracking-widest">Host</span>
-                                                )}
-                                            </div>
-                                            <p className="text-[9px] font-bold text-white/40 uppercase tracking-[0.2em]">{p.role || 'Membre'}</p>
-
-                                            {sharingUser === p.id && (
-                                                <div className="flex items-center gap-1.5 mt-2 px-2 py-1 bg-indigo-600/90 rounded-lg w-fit">
-                                                    <Monitor className="w-3 h-3 text-white" />
-                                                    <span className="text-[8px] font-black text-white uppercase tracking-widest">Écran partagé</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            {state.isMuted && (
-                                                <div className="p-1.5 bg-red-500/20 border border-red-500/30 rounded-lg">
-                                                    <MicOff className="w-3.5 h-3.5 text-red-500" />
-                                                </div>
-                                            )}
-                                            <div className={`w-2 h-2 rounded-full ${stream ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.4)]' : 'bg-yellow-500'} `} />
-                                        </div>
-                                    </div>
-
-                                    {/* Camera Off Overlay */}
-                                    {state.isCameraOff && (
-                                        <div className="absolute inset-0 bg-gray-900 flex flex-col items-center justify-center gap-4 z-10 transition-all duration-500">
-                                            <div className="relative">
-                                                <EmployeeAvatar avatarUrl={p.avatar} fullName={p.name} className="w-20 h-20 md:w-28 md:h-28 text-xl border-4 border-white/5 shadow-2xl" />
-                                                <div className="absolute -bottom-2 -right-2 p-3 bg-gray-950 rounded-full border border-white/10 shadow-xl">
-                                                    <VideoOff className="w-6 h-6 text-red-500" />
-                                                </div>
-                                            </div>
-                                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">Caméra éteinte</p>
-                                        </div>
-                                    )}
-                                </div>
-                            )
-                        })}
+                        </AnimatePresence>
                     </div>
                 </div>
 
                 {/* Right Sidebar (Chat/Participants) */}
                 {(showChat || showParticipants) && (
-                    <div className="w-80 bg-gray-950/80 border-l border-white/5 flex flex-col animate-in slide-in-from-right duration-300">
+                    <div className="w-80 bg-gray-950/80 border-l border-white/5 flex flex-col z-20 absolute md:static inset-y-0 right-0 h-full backdrop-blur-xl md:backdrop-blur-none shadow-2xl md:shadow-none animate-in slide-in-from-right duration-300">
                         <div className="flex-1 flex flex-col overflow-hidden">
                             <div className="p-6 border-b border-white/5 bg-white/2">
                                 <div className="flex items-center justify-between mb-6">
@@ -900,7 +973,7 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
                     className="flex items-center gap-3 bg-red-600 hover:bg-red-700 text-white px-8 py-5 rounded-2xl font-black shadow-2xl shadow-red-900/40 transition-all active:scale-[0.98]"
                 >
                     <PhoneOff className="w-6 h-6" />
-                    <span className="uppercase tracking-[0.2em] text-[10px]">Quitter</span>
+                    <span className="hidden md:inline uppercase tracking-[0.2em] text-[10px]">Quitter</span>
                 </button>
             </div>
         </div>
