@@ -67,7 +67,8 @@ export async function login(formData: FormData) {
         id: finalEmployee.id,
         email: finalEmployee.email,
         full_name: finalEmployee.full_name,
-        role: finalEmployee.role
+        role: finalEmployee.role,
+        avatar_url: finalEmployee.avatar_url
     }), {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
@@ -133,7 +134,8 @@ export async function signup(formData: FormData) {
         id: employee.id,
         email: employee.email,
         full_name: employee.full_name,
-        role: employee.role
+        role: employee.role,
+        avatar_url: employee.avatar_url
     }), {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',

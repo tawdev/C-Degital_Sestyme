@@ -9,21 +9,29 @@ import { Loader2, ShieldAlert, ArrowLeft, Play, Calendar, Clock, Video, User } f
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import { useCall } from '@/components/providers/call-provider'
 
 export default function MeetingPage() {
     const params = useParams()
     const id = params.id as string
+    const router = useRouter()
+
+    // Global call context for "Fast Path"
+    const { isInCall, meetingId: activeMeetingId, meeting: activeMeeting, currentUser: activeUser } = useCall()
+
     const [meeting, setMeeting] = useState<any>(null)
     const [currentUser, setCurrentUser] = useState<any>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
-    const router = useRouter()
+
+    // Fast Path logic: If we're already in THIS call, skip loading
+    const isAlreadyInThisCall = isInCall && activeMeetingId === id && activeMeeting && activeUser
 
     useEffect(() => {
-        if (id) {
+        if (id && !isAlreadyInThisCall) {
             loadData()
         }
-    }, [id])
+    }, [id, isAlreadyInThisCall])
 
     async function loadData() {
         setLoading(true)
@@ -75,6 +83,16 @@ export default function MeetingPage() {
 
         setMeeting(meetingData)
         setLoading(false)
+    }
+
+    if (isAlreadyInThisCall) {
+        return (
+            <MeetingRoom
+                meetingId={id}
+                meeting={activeMeeting}
+                currentUser={activeUser}
+            />
+        )
     }
 
     if (loading) {
