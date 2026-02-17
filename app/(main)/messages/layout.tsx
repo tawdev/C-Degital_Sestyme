@@ -33,12 +33,12 @@ export default async function MessagesLayout({
     return (
         <ResponsiveChatLayout
             sidebarHeader={
-                <>
-                    <h2 className="text-lg font-bold text-gray-900">Messages</h2>
-                    <p className="text-xs text-gray-500">
-                        {isAdmin ? 'Team Directory & History' : 'Chat with your colleagues'}
+                <div className="space-y-1">
+                    <h2 className="text-2xl font-black text-gray-900 dark:text-white transition-colors tracking-tight">Messages</h2>
+                    <p className="text-xs font-bold text-gray-400 dark:text-indigo-200/40 uppercase tracking-widest">
+                        {isAdmin ? 'Annuaire & Historique' : 'Discutez avec vos collègues'}
                     </p>
-                </>
+                </div>
             }
             sidebarProps={{
                 conversations,

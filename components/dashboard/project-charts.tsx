@@ -1,17 +1,18 @@
 'use client'
 
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
+import { motion } from 'framer-motion'
 
 interface ProjectChartsProps {
     statusData: Array<{ status: string; count: number; percentage: number }>
 }
 
 const STATUS_COLORS: Record<string, string> = {
-    'in_progress': '#10b981',
-    'pending': '#f59e0b',
-    'completed': '#6366f1',
-    'on_hold': '#ef4444',
-    'cancelled': '#6b7280'
+    'in_progress': '#10b981', // emerald-500
+    'pending': '#f59e0b',    // amber-500
+    'completed': '#6366f1',  // indigo-500
+    'on_hold': '#ef4444',    // red-500
+    'cancelled': '#6b7280'   // gray-500
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -39,13 +40,14 @@ export default function ProjectCharts({ statusData }: ProjectChartsProps) {
     const CustomTooltip = ({ active, payload }: any) => {
         if (active && payload && payload.length) {
             return (
-                <div className="bg-white px-4 py-3 rounded-xl shadow-lg border border-gray-100">
-                    <p className="text-sm font-bold text-gray-900">{payload[0].name}</p>
-                    <p className="text-sm text-gray-600 mt-1">
-                        Nombre: <span className="font-bold text-gray-900">{payload[0].value}</span>
-                    </p>
+                <div className="bg-[#1a1625]/80 backdrop-blur-xl px-4 py-3 rounded-2xl shadow-2xl border border-white/10 ring-1 ring-black/5">
+                    <p className="text-xs font-black text-indigo-400 uppercase tracking-widest">{payload[0].name}</p>
+                    <div className="flex items-center gap-2 mt-2">
+                        <span className="text-2xl font-black text-white">{payload[0].value}</span>
+                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">Unités</span>
+                    </div>
                     {payload[0].payload.percentage && (
-                        <p className="text-xs text-gray-500 mt-0.5">
+                        <p className="text-[10px] font-bold text-gray-400 mt-1 uppercase tracking-widest">
                             {payload[0].payload.percentage}% du total
                         </p>
                     )}
@@ -57,14 +59,16 @@ export default function ProjectCharts({ statusData }: ProjectChartsProps) {
 
     const CustomLegend = ({ payload }: any) => {
         return (
-            <div className="flex flex-wrap items-center justify-center gap-4 mt-6">
+            <div className="flex flex-wrap items-center justify-center gap-6 mt-8">
                 {payload.map((entry: any, index: number) => (
-                    <div key={`legend-${index}`} className="flex items-center gap-2">
+                    <div key={`legend-${index}`} className="flex items-center gap-2 group cursor-default">
                         <div
-                            className="w-3 h-3 rounded-full"
+                            className="w-2 h-2 rounded-full shadow-[0_0_8px_rgba(255,255,255,0.1)] group-hover:scale-125 transition-transform"
                             style={{ backgroundColor: entry.color }}
                         />
-                        <span className="text-xs font-medium text-gray-600">{entry.value}</span>
+                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest group-hover:text-white transition-colors">
+                            {entry.value}
+                        </span>
                     </div>
                 ))}
             </div>
@@ -73,30 +77,33 @@ export default function ProjectCharts({ statusData }: ProjectChartsProps) {
 
     if (!statusData || statusData.length === 0) {
         return (
-            <div className="flex items-center justify-center h-64 text-gray-400">
-                <p className="text-sm">Aucune donnée à afficher</p>
+            <div className="flex items-center justify-center h-64 text-gray-500 bg-white/5 rounded-3xl border border-white/10">
+                <p className="text-xs font-black uppercase tracking-widest">Aucune donnée opérationnelle</p>
             </div>
         )
     }
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
             {/* Pie Chart */}
-            <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl p-6 border border-gray-100">
-                <h3 className="text-base font-bold text-gray-900 mb-4 text-center">Répartition des projets</h3>
-                <ResponsiveContainer width="100%" height={280}>
+            <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="bg-white/5 backdrop-blur-sm rounded-[2rem] p-8 border border-white/10 relative overflow-hidden"
+            >
+                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 blur-3xl rounded-full translate-x-10 -translate-y-10" />
+                <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] mb-8 text-center italic">Distribution Relative</h3>
+                <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                         <Pie
                             data={pieData}
                             cx="50%"
                             cy="50%"
-                            labelLine={false}
-                            label={(entry: any) => `${entry.percentage}%`}
-                            outerRadius={90}
-                            fill="#8884d8"
+                            innerRadius={60}
+                            outerRadius={100}
+                            paddingAngle={5}
                             dataKey="value"
-                            animationBegin={0}
-                            animationDuration={800}
+                            stroke="none"
                         >
                             {pieData.map((entry, index) => (
                                 <Cell key={`cell-${index}`} fill={entry.color} />
@@ -106,29 +113,35 @@ export default function ProjectCharts({ statusData }: ProjectChartsProps) {
                         <Legend content={<CustomLegend />} />
                     </PieChart>
                 </ResponsiveContainer>
-            </div>
+            </motion.div>
 
             {/* Bar Chart */}
-            <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl p-6 border border-gray-100">
-                <h3 className="text-base font-bold text-gray-900 mb-4 text-center">Nombre de projets par statut</h3>
-                <ResponsiveContainer width="100%" height={280}>
-                    <BarChart data={barData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+            <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="bg-white/5 backdrop-blur-sm rounded-[2rem] p-8 border border-white/10 relative overflow-hidden"
+            >
+                <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 blur-3xl rounded-full translate-x-10 -translate-y-10" />
+                <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] mb-8 text-center italic">Volume Quantitatif</h3>
+                <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={barData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                         <XAxis
                             dataKey="name"
-                            tick={{ fontSize: 11, fill: '#6b7280' }}
-                            axisLine={{ stroke: '#e5e7eb' }}
+                            tick={{ fontSize: 9, fill: '#6b7280', fontWeight: 'bold' }}
+                            axisLine={false}
+                            tickLine={false}
                         />
                         <YAxis
-                            tick={{ fontSize: 11, fill: '#6b7280' }}
-                            axisLine={{ stroke: '#e5e7eb' }}
+                            tick={{ fontSize: 9, fill: '#6b7280', fontWeight: 'bold' }}
+                            axisLine={false}
+                            tickLine={false}
                         />
-                        <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }} />
+                        <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255, 255, 255, 0.05)', radius: 10 }} />
                         <Bar
                             dataKey="count"
-                            radius={[8, 8, 0, 0]}
-                            animationBegin={0}
-                            animationDuration={800}
+                            radius={[6, 6, 0, 0]}
+                            barSize={30}
                         >
                             {barData.map((entry, index) => (
                                 <Cell key={`bar-${index}`} fill={entry.fill} />
@@ -136,7 +149,7 @@ export default function ProjectCharts({ statusData }: ProjectChartsProps) {
                         </Bar>
                     </BarChart>
                 </ResponsiveContainer>
-            </div>
+            </motion.div>
         </div>
     )
 }

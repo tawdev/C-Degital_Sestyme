@@ -5,13 +5,12 @@ import Link from 'next/link'
 import EmployeeAvatar from '@/components/employee-avatar'
 import { SafeDate } from '@/components/ui/safe-date'
 import { ChatConversation } from '@/lib/types/chat'
-import { useSearchParams, useParams } from 'next/navigation'
+import { useSearchParams, useParams, useRouter } from 'next/navigation'
 import UnreadBadge from './unread-badge'
-import { Plus, Users } from 'lucide-react'
+import { Plus, Users, User, Search } from 'lucide-react'
 import GroupChatModal from './group-chat-modal'
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { useRealtime } from '@/context/realtime-context'
+import { format } from 'date-fns'
 
 interface ChatSidebarProps {
     conversations: ChatConversation[]
@@ -22,28 +21,16 @@ interface ChatSidebarProps {
 }
 
 export default function ChatSidebar({ conversations, contacts, activeId: propActiveId, isAdmin, currentUserId }: ChatSidebarProps) {
-    const searchParams = useSearchParams()
     const params = useParams()
     const activeId = params?.id as string || propActiveId
     const [isGroupModalOpen, setIsGroupModalOpen] = useState(false)
-    const [mounted, setMounted] = useState(false)
-    const [localReadIds, setLocalReadIds] = useState<Set<string>>(new Set())
+    const [searchQuery, setSearchQuery] = useState('')
     const { isUserOnline } = useRealtime()
     const router = useRouter()
 
     useEffect(() => {
-        setMounted(true)
-
-        // Refresh on new messages (for unread counts and sorting)
-        const handleNewMessage = () => {
-            console.log('[ChatSidebar] New message detected, refreshing UI...')
-            router.refresh()
-        }
-
-        const handleReset = () => {
-            console.log('[ChatSidebar] Unread count reset detected, refreshing UI...')
-            router.refresh()
-        }
+        const handleNewMessage = () => router.refresh()
+        const handleReset = () => router.refresh()
 
         window.addEventListener('new-message', handleNewMessage)
         window.addEventListener('unread-count-reset', handleReset)
@@ -54,146 +41,133 @@ export default function ChatSidebar({ conversations, contacts, activeId: propAct
         }
     }, [router])
 
-    // Optimistically clear unread count for the active conversation
-    useEffect(() => {
-        if (activeId && !localReadIds.has(activeId)) {
-            setLocalReadIds(prev => {
-                const next = new Set(prev)
-                next.add(activeId)
-                return next
-            })
-        }
-    }, [activeId, localReadIds])
+    // Filtre les conversations et les contacts
+    const filteredConversations = conversations.filter(c =>
+        c.employee?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.last_message_content?.toLowerCase().includes(searchQuery.toLowerCase())
+    )
 
-    // Clear local cache when conversations prop updates with 0 count (server truth arrived)
-    useEffect(() => {
-        setLocalReadIds(prev => {
-            const next = new Set(prev)
-            conversations.forEach(c => {
-                if (c.unread_count === 0) next.delete(c.id)
-            })
-            return next
-        })
-    }, [conversations])
-
-    // Display all active conversations (including groups) followed by contacts who don't have a chat yet
-    const displayItems = [
-        ...conversations,
-        ...(contacts || []).filter(contact => !conversations.some(c => c.employee_id === contact.id))
-    ]
+    const filteredContacts = (contacts || [])
+        .filter(contact => !conversations.some(c => c.employee_id === contact.id))
+        .filter(contact => contact.full_name?.toLowerCase().includes(searchQuery.toLowerCase()))
 
     return (
-        <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex-1 flex flex-col min-h-0 bg-transparent">
+            {/* Search Bar */}
+            <div className="px-8 py-6 border-b border-gray-100 dark:border-white/5 bg-gray-50/30 dark:bg-white/5">
+                <div className="relative group">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
+                    <input
+                        type="text"
+                        placeholder="Rechercher..."
+                        className="w-full pl-11 pr-4 py-3 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-2xl text-sm focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-200 dark:focus:border-indigo-400/30 transition-all text-gray-900 dark:text-white placeholder:text-gray-400"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                </div>
+            </div>
+
             {/* Action Buttons (Admin only) */}
             {isAdmin && (
-                <div className="p-3 bg-white border-b border-gray-100 flex gap-2">
+                <div className="px-8 py-4 border-b border-gray-100 dark:border-white/5">
                     <button
                         onClick={() => setIsGroupModalOpen(true)}
-                        className="flex-1 flex items-center justify-center gap-2 py-2 px-3 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors shadow-sm border border-indigo-100/50"
+                        className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-900/20 active:scale-[0.98]"
                     >
-                        <Plus className="w-3.5 h-3.5" />
-                        New Group
+                        <Plus className="w-4 h-4" />
+                        Nouveau Groupe
                     </button>
                 </div>
             )}
 
-            <div className="flex-1 overflow-y-auto">
-                {displayItems.length === 0 ? (
-                    <div className="p-8 text-center text-sm text-gray-500">
-                        No active chats found.
-                    </div>
-                ) : (
-                    displayItems.map((item) => {
-                        const isContact = 'full_name' in item || 'fullName' in item
-                        const employee = isContact ? item : item.employee
-                        const targetId = item.id
+            <div className="flex-1 overflow-y-auto px-6 py-8 space-y-8 custom-scrollbar">
+                {/* Active Conversations */}
+                {filteredConversations.length > 0 && (
+                    <div className="space-y-2">
+                        <h3 className="px-4 text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-4">Discussions</h3>
+                        {filteredConversations.map((conv) => {
+                            const otherUser = conv.employee
+                            const isActive = activeId === conv.id
+                            const unreadCount = conv.unread_count || 0
+                            const isUnread = unreadCount > 0
 
-                        // Find existing conversation for this employee to get its ID and unread count
-                        const existingConversation = isContact
-                            ? conversations.find(c => c.employee_id === targetId)
-                            : item as ChatConversation
-
-                        const isGroup = (existingConversation as any)?.is_group
-                        const conversationId = existingConversation?.id
-                        let unreadCount = existingConversation?.unread_count || 0
-
-                        // Optimistic override
-                        if (conversationId && localReadIds.has(conversationId)) {
-                            unreadCount = 0
-                        }
-
-                        const isActive = activeId === conversationId || (searchParams.get('employee_id') === targetId)
-                        const href = conversationId
-                            ? `/messages/${conversationId}`
-                            : `/messages/new?employee_id=${targetId}`
-
-                        return (
-                            <Link
-                                key={item.id}
-                                href={href}
-                                className={`block hover:bg-gray-50 transition-all cursor-pointer ${isActive ? 'bg-indigo-50 border-l-4 border-l-indigo-600' : 'border-l-4 border-l-transparent'
-                                    }`}
-                            >
-                                <div className="flex items-center gap-3 p-4 border-b border-gray-100">
-                                    <div className="relative">
-                                        <div className="relative">
-                                            <EmployeeAvatar
-                                                avatarUrl={employee?.avatar_url || null}
-                                                fullName={employee?.full_name || employee?.fullName || 'User'}
-                                                isOnline={!isGroup && !!employee?.id && isUserOnline(employee.id)}
-                                            />
-                                            {isGroup && (
-                                                <div className="absolute -bottom-1 -right-1 bg-indigo-600 rounded-full p-1 border-2 border-white">
-                                                    <Users className="w-2.5 h-2.5 text-white" />
-                                                </div>
-                                            )}
-                                        </div>
-                                        {conversationId && !isActive && (
-                                            <div className="absolute -top-1 -right-1 z-10">
-                                                <UnreadBadge
-                                                    initialCount={unreadCount}
-                                                    userId={currentUserId}
-                                                    conversationId={conversationId}
-                                                />
-                                            </div>
+                            return (
+                                <Link
+                                    key={conv.id}
+                                    href={`/messages/${conv.id}`}
+                                    className={`flex items-center gap-4 p-4 rounded-3xl transition-all group relative overflow-hidden ${isActive
+                                        ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-900/20'
+                                        : 'hover:bg-indigo-50/50 dark:hover:bg-white/5 text-gray-700 dark:text-gray-300'
+                                        }`}
+                                >
+                                    <div className="relative shrink-0">
+                                        <EmployeeAvatar
+                                            avatarUrl={otherUser?.avatar_url || null}
+                                            fullName={otherUser?.full_name || 'User'}
+                                            className={`w-12 h-12 text-xs font-black border-2 transition-all ${isActive ? 'border-indigo-400' : 'border-white dark:border-white/10 shadow-sm'}`}
+                                        />
+                                        {otherUser?.id && isUserOnline(otherUser.id) && (
+                                            <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-gray-900 rounded-full" />
                                         )}
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between">
-                                            <p className={`text-sm tracking-tight truncate ${unreadCount > 0 ? 'font-bold text-gray-900' : 'font-medium text-gray-700'}`}>
-                                                {employee?.full_name || employee?.fullName || 'Unknown Employee'}
-                                            </p>
-                                            {(item as any).isAdminMonitoring && (
-                                                <span className="px-1.5 py-0.5 bg-amber-50 text-amber-600 text-[8px] font-bold rounded uppercase border border-amber-100 ml-1">
-                                                    Monitor
-                                                </span>
-                                            )}
-                                            {!isContact && (
-                                                <span className="text-[10px] text-gray-400">
-                                                    <SafeDate
-                                                        date={item.last_message_at || item.created_at}
-                                                        formatString={item.last_message_at ? 'HH:mm' : 'dd/MM/yyyy'}
-                                                    />
+                                    <div className="flex-1 text-left min-w-0">
+                                        <div className="flex justify-between items-center mb-0.5">
+                                            <span className={`text-sm font-black truncate ${isActive ? 'text-white' : 'text-gray-900 dark:text-white'}`}>
+                                                {otherUser?.full_name || 'Utilisateur'}
+                                            </span>
+                                            {conv.last_message_at && (
+                                                <span className={`text-[10px] font-bold shrink-0 ${isActive ? 'text-indigo-200' : 'text-gray-400 dark:text-gray-500'}`}>
+                                                    {format(new Date(conv.last_message_at), 'HH:mm')}
                                                 </span>
                                             )}
                                         </div>
-                                        <p className="text-xs text-gray-500 truncate mt-0.5">
-                                            {isGroup ? (
-                                                item.last_message_content ? (
-                                                    <span className="flex items-center gap-1">
-                                                        <span className="font-bold text-indigo-600/80">{item.last_sender_name?.split(' ')[0]}:</span>
-                                                        <span className="truncate">{item.last_message_content}</span>
-                                                    </span>
-                                                ) : `${(existingConversation as any).participants?.length || 0} members`
-                                            ) : (
-                                                item.last_message_content || (employee?.role || 'Team Member')
-                                            )}
+                                        <p className={`text-xs truncate ${isActive ? 'text-indigo-100 font-medium' : 'text-gray-500 dark:text-gray-400 font-medium'} ${isUnread && !isActive ? 'text-indigo-600 dark:text-indigo-400 font-black' : ''}`}>
+                                            {conv.last_message_content || 'Démarrer la discussion'}
                                         </p>
                                     </div>
+                                    {isUnread && !isActive && (
+                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[10px] font-black shadow-lg shadow-indigo-900/20">
+                                            {unreadCount}
+                                        </div>
+                                    )}
+                                </Link>
+                            )
+                        })}
+                    </div>
+                )}
+
+                {/* Contacts / Team Directory */}
+                {filteredContacts.length > 0 && (
+                    <div className="space-y-2">
+                        <h3 className="px-4 text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mb-4">Membres de l'équipe</h3>
+                        {filteredContacts.map((contact) => (
+                            <Link
+                                key={contact.id}
+                                href={`/messages/new?employee_id=${contact.id}`}
+                                className="flex items-center gap-4 p-4 rounded-3xl hover:bg-indigo-50/50 dark:hover:bg-white/5 transition-all group"
+                            >
+                                <EmployeeAvatar
+                                    avatarUrl={contact.avatar_url || null}
+                                    fullName={contact.full_name || 'User'}
+                                    className="w-12 h-12 text-xs font-black border-2 border-white dark:border-white/10 shadow-sm transition-transform group-hover:scale-105"
+                                />
+                                <div className="flex-1 text-left">
+                                    <div className="text-sm font-black text-gray-900 dark:text-white">{contact.full_name}</div>
+                                    <div className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mt-0.5">{contact.role || 'Membre'}</div>
                                 </div>
+                                <User className="w-4 h-4 text-gray-200 dark:text-white/5 group-hover:text-indigo-400 transition-colors" />
                             </Link>
-                        )
-                    })
+                        ))}
+                    </div>
+                )}
+
+                {filteredConversations.length === 0 && filteredContacts.length === 0 && (
+                    <div className="p-12 text-center">
+                        <div className="w-16 h-16 bg-gray-50 dark:bg-white/5 rounded-[1.5rem] flex items-center justify-center mx-auto mb-4 border border-gray-100 dark:border-white/5">
+                            <Search className="w-6 h-6 text-gray-300 dark:text-gray-600" />
+                        </div>
+                        <p className="text-sm font-bold text-gray-400 dark:text-gray-500">Aucun résultat trouvé</p>
+                    </div>
                 )}
             </div>
 

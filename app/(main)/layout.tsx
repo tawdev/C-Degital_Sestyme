@@ -14,6 +14,7 @@ import { AudioProvider } from '@/context/audio-context'
 import { NotificationProvider } from '@/context/notification-context'
 import MeetingNotificationBadge from '@/components/meetings/notification-badge'
 import MeetingNotification from '@/components/meetings/meeting-notification'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
@@ -52,11 +53,11 @@ export default async function MainLayout({ children }: { children: React.ReactNo
             <NotificationProvider>
                 <CallProvider currentUser={currentUser}>
                     <RealtimeProvider currentUserId={session.id}>
-                        <div className="min-h-screen flex flex-col bg-gray-50">
+                        <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-[#050505] overflow-x-hidden">
                             {/* Global Notification */}
                             <MeetingNotification />
                             {/* Modern Header */}
-                            <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+                            <header className="bg-white/80 dark:bg-[#0a0515]/80 backdrop-blur-md border-b border-gray-200 dark:border-white/10 sticky top-0 z-50 shadow-sm w-full">
                                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                                     <div className="flex justify-between items-center h-16">
                                         {/* Logo */}
@@ -65,9 +66,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
                                                 <div className="bg-gradient-to-br from-indigo-600 to-purple-600 p-2 rounded-lg group-hover:shadow-lg transition-shadow">
                                                     <LayoutDashboard className="h-5 w-5 text-white" />
                                                 </div>
-                                                <span className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                                                    EmpManager
-                                                </span>
+                                                
                                             </Link>
 
                                             {/* Navigation */}
@@ -112,15 +111,17 @@ export default async function MainLayout({ children }: { children: React.ReactNo
 
                                         {/* User Menu */}
                                         <div className="flex items-center gap-4">
+                                            <ThemeToggle />
+
                                             {/* Journal Notification Bell */}
                                             <JournalBadge initialCount={journalCount} userId={session.id} ownedProjectIds={ownedProjects} />
 
                                             {/* User Info */}
                                             <Link
                                                 href="/profile"
-                                                className="hidden sm:flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 hover:bg-gray-100 hover:border-gray-300 transition-all cursor-pointer group/user"
+                                                className="hidden sm:flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 hover:bg-gray-100 dark:hover:bg-white/10 hover:border-gray-300 dark:hover:border-white/20 transition-all cursor-pointer group/user"
                                             >
-                                                <div className="flex-shrink-0 h-8 w-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-semibold group-hover/user:shadow-md transition-all overflow-hidden border-2 border-white">
+                                                <div className="flex-shrink-0 h-8 w-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-semibold group-hover/user:shadow-md transition-all overflow-hidden border-2 border-white dark:border-white/20">
                                                     {avatarUrl ? (
                                                         <img
                                                             src={avatarUrl}
@@ -132,8 +133,8 @@ export default async function MainLayout({ children }: { children: React.ReactNo
                                                     )}
                                                 </div>
                                                 <div className="hidden lg:block text-left">
-                                                    <p className="text-sm font-medium text-gray-900 group-hover/user:text-indigo-600 transition-colors">{displayName}</p>
-                                                    <p className="text-xs text-gray-500">{session.email}</p>
+                                                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100 group-hover/user:text-indigo-600 dark:group-hover/user:text-indigo-400 transition-colors">{displayName}</p>
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400">{session.email}</p>
                                                 </div>
                                             </Link>
 
@@ -141,7 +142,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
                                             <form action={logout}>
                                                 <button
                                                     type="submit"
-                                                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                                                 >
                                                     <LogOut className="h-4 w-4" />
                                                     <span className="hidden sm:inline">Sign out</span>
@@ -152,8 +153,8 @@ export default async function MainLayout({ children }: { children: React.ReactNo
                                 </div>
 
                                 {/* Mobile Navigation */}
-                                <div className="md:hidden border-t border-gray-200 bg-gray-50">
-                                    <div className="max-w-7xl mx-auto px-4 py-3 flex gap-2">
+                                <div className="md:hidden border-t border-gray-200 bg-gray-50 overflow-x-auto custom-scrollbar">
+                                    <div className="max-w-7xl mx-auto px-4 py-3 flex gap-2 min-w-max">
                                         {isAdmin && (
                                             <MobileNavLink href="/dashboard" icon={LayoutDashboard}>
                                                 Dashboard
@@ -192,7 +193,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
                                     </div>
                                 </div>
                             </header>
-                            <main className="flex-1 w-full max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+                            <main className="flex-1 w-full max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 overflow-x-hidden">
                                 {children}
                             </main>
                             <footer className="bg-white border-t border-gray-200 mt-auto">
@@ -210,14 +211,13 @@ export default async function MainLayout({ children }: { children: React.ReactNo
     )
 }
 
-// Desktop Navigation Link Component
 function NavLink({ href, icon: Icon, children, badge }: { href: string, icon: any, children: React.ReactNode, badge?: React.ReactNode }) {
     return (
         <Link
             href={href}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors group relative"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-white/5 rounded-lg transition-colors group relative"
         >
-            <Icon className="h-4 w-4 text-gray-400 group-hover:text-indigo-600" />
+            <Icon className="h-4 w-4 text-gray-400 dark:text-gray-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400" />
             {children}
             {badge && (
                 <div className="absolute -top-1 -right-1">

@@ -36,60 +36,65 @@ export default async function ProfilePage() {
     }
 
     return (
-        <div className="max-w-4xl mx-auto space-y-6">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl shadow-lg p-8 text-white">
-                <div className="flex items-center gap-6">
+        <div className="max-w-4xl mx-auto space-y-10 transition-colors duration-500">
+            {/* Header with Glass Gradient */}
+            <div className="relative overflow-hidden bg-gradient-to-r from-indigo-600 to-purple-600 rounded-[2.5rem] shadow-2xl shadow-indigo-900/20 p-10 text-white group">
+                {/* Decorative background elements */}
+                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:scale-110 transition-transform duration-700" />
+                <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-400/20 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
+
+                <div className="relative flex flex-col md:flex-row items-center gap-8">
                     <EmployeeAvatar
                         avatarUrl={employee.avatar_url}
                         fullName={employee.full_name}
-                        className="h-24 w-24 text-2xl border-4 border-white/30"
+                        className="h-32 w-32 text-4xl border-4 border-white/30 shadow-2xl transition-transform duration-500 group-hover:scale-105"
                     />
-                    <div>
-                        <h1 className="text-3xl font-bold">{employee.full_name}</h1>
-                        <p className="text-indigo-100 mt-1 flex items-center gap-2">
-                            <Briefcase className="h-4 w-4" />
-                            {employee.role || 'No role assigned'}
+                    <div className="text-center md:text-left space-y-3">
+                        <div className="inline-flex px-4 py-1.5 bg-white/10 backdrop-blur-md rounded-full border border-white/20 text-[10px] font-black uppercase tracking-[0.2em]">Profil Utilisateur</div>
+                        <h1 className="text-4xl md:text-5xl font-black tracking-tight">{employee.full_name}</h1>
+                        <p className="text-indigo-100/80 mt-1 flex items-center justify-center md:justify-start gap-2 text-lg font-medium">
+                            <Briefcase className="h-5 w-5 opacity-70" />
+                            {employee.role || 'Aucun rôle assigné'}
                         </p>
                     </div>
                 </div>
             </div>
 
-            {/* Profile Info Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-blue-50 p-3 rounded-lg">
-                            <Mail className="h-5 w-5 text-blue-600" />
+            {/* Profile Info Cards with Glassmorphism */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white/70 dark:bg-white/5 backdrop-blur-2xl rounded-[2rem] border border-gray-200 dark:border-white/10 p-6 shadow-xl shadow-indigo-900/5 hover:shadow-2xl transition-all group">
+                    <div className="flex items-center gap-4">
+                        <div className="bg-indigo-50 dark:bg-indigo-400/10 p-4 rounded-2xl group-hover:scale-110 transition-transform">
+                            <Mail className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />
                         </div>
                         <div>
-                            <p className="text-xs text-gray-500">Email</p>
-                            <p className="text-sm font-medium text-gray-900">{employee.email}</p>
+                            <p className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">Email</p>
+                            <p className="text-sm font-black text-gray-900 dark:text-white transition-colors">{employee.email}</p>
                         </div>
                     </div>
                 </div>
 
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-emerald-50 p-3 rounded-lg">
-                            <Phone className="h-5 w-5 text-emerald-600" />
+                <div className="bg-white/70 dark:bg-white/5 backdrop-blur-2xl rounded-[2rem] border border-gray-200 dark:border-white/10 p-6 shadow-xl shadow-indigo-900/5 hover:shadow-2xl transition-all group">
+                    <div className="flex items-center gap-4">
+                        <div className="bg-emerald-50 dark:bg-emerald-400/10 p-4 rounded-2xl group-hover:scale-110 transition-transform">
+                            <Phone className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
                         </div>
                         <div>
-                            <p className="text-xs text-gray-500">Phone</p>
-                            <p className="text-sm font-medium text-gray-900">{employee.phone || 'Not provided'}</p>
+                            <p className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">Téléphone</p>
+                            <p className="text-sm font-black text-gray-900 dark:text-white transition-colors">{employee.phone || 'Non renseigné'}</p>
                         </div>
                     </div>
                 </div>
 
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-purple-50 p-3 rounded-lg">
-                            <Calendar className="h-5 w-5 text-purple-600" />
+                <div className="bg-white/70 dark:bg-white/5 backdrop-blur-2xl rounded-[2rem] border border-gray-200 dark:border-white/10 p-6 shadow-xl shadow-indigo-900/5 hover:shadow-2xl transition-all group">
+                    <div className="flex items-center gap-4">
+                        <div className="bg-purple-50 dark:bg-purple-400/10 p-4 rounded-2xl group-hover:scale-110 transition-transform">
+                            <Calendar className="h-6 w-6 text-purple-600 dark:text-purple-400" />
                         </div>
                         <div>
-                            <p className="text-xs text-gray-500">Member Since</p>
-                            <p className="text-sm font-medium text-gray-900">
-                                {new Date(employee.created_at).toLocaleDateString('en-US', {
+                            <p className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">Membre depuis</p>
+                            <p className="text-sm font-black text-gray-900 dark:text-white transition-colors">
+                                {new Date(employee.created_at).toLocaleDateString('fr-FR', {
                                     month: 'short',
                                     year: 'numeric'
                                 })}

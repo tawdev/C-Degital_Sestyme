@@ -83,186 +83,169 @@ export default async function ProjectsPage({
     const completedCount = projects.filter(p => p.status === 'completed').length
 
     return (
-        <div className="space-y-6">
+        <div className="max-w-7xl mx-auto space-y-10 pb-12 transition-colors duration-500">
             {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900">Projets</h1>
-                    <p className="mt-2 text-gray-600">Gérez les projets de sites web et suivez leur progression</p>
+            <div className="relative overflow-hidden bg-white/70 dark:bg-white/5 backdrop-blur-2xl rounded-[2.5rem] border border-gray-200 dark:border-white/10 p-8 md:p-10 shadow-2xl shadow-indigo-900/5">
+                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
+                    <div>
+                        <h1 className="text-4xl lg:text-5xl font-black text-gray-900 dark:text-white tracking-tight">
+                            Projets
+                        </h1>
+                        <p className="mt-3 text-lg text-gray-600 dark:text-indigo-200/60 font-medium max-w-2xl">
+                            Gérez les projets de sites web et suivez leur progression avec une clarté totale.
+                        </p>
+                    </div>
+                    {/* Allow both Employees and Admins to create projects */}
+                    {!isAdmin && (
+                        <Link
+                            href="/projects/new"
+                            className="inline-flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-2xl font-black text-sm uppercase tracking-widest transition-all shadow-xl shadow-indigo-900/20 hover:scale-[1.02] active:scale-[0.98] w-full md:w-auto justify-center"
+                        >
+                            <Plus className="h-5 w-5" />
+                            Nouveau projet
+                        </Link>
+                    )}
                 </div>
-                {/* Allow both Employees and Admins to create projects */}
-                {/* Allow only Employees (not Admins) to create projects */}
-                {!isAdmin && (
-                    <Link
-                        href="/projects/new"
-                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg font-medium w-full md:w-auto justify-center"
+                <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/10 dark:bg-purple-600/20 blur-[100px] rounded-full animate-pulse"></div>
+            </div>
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {[
+                    { label: 'Total des projets', value: projects.length, icon: Activity, color: 'text-blue-600', bgColor: 'bg-blue-50' },
+                    { label: 'En cours', value: activeCount, icon: Activity, color: 'text-emerald-600', bgColor: 'bg-emerald-50' },
+                    { label: 'En attente', value: pendingCount, icon: Clock, color: 'text-amber-600', bgColor: 'bg-amber-50' },
+                    { label: 'Terminé', value: completedCount, icon: CheckCircle2, color: 'text-indigo-600', bgColor: 'bg-indigo-50' }
+                ].map((stat, idx) => (
+                    <div
+                        key={idx}
+                        className="group relative bg-white/70 dark:bg-white/5 backdrop-blur-xl rounded-[2rem] border border-gray-200 dark:border-white/10 p-6 hover:bg-white/90 dark:hover:bg-white/10 transition-all duration-300 shadow-sm"
                     >
-                        <Plus className="h-5 w-5" />
-                        Nouveau projet
-                    </Link>
-                )}
+                        <div className="flex items-center gap-4">
+                            <div className={`${stat.bgColor} dark:bg-white/5 p-4 rounded-2xl group-hover:scale-110 transition-transform duration-500`}>
+                                <stat.icon className={`h-6 w-6 ${stat.color}`} />
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">{stat.label}</p>
+                                <p className="text-2xl font-black text-gray-900 dark:text-white">{stat.value}</p>
+                            </div>
+                        </div>
+                    </div>
+                ))}
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-blue-50 p-3 rounded-lg">
-                            <Activity className="h-6 w-6 text-blue-600" />
-                        </div>
-                        <div>
-                            <p className="text-sm text-gray-600">Total des projets</p>
-                            <p className="text-2xl font-bold text-gray-900">{projects.length}</p>
-                        </div>
-                    </div>
-                </div>
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-emerald-50 p-3 rounded-lg">
-                            <Activity className="h-6 w-6 text-emerald-600" />
-                        </div>
-                        <div>
-                            <p className="text-sm text-gray-600">En cours</p>
-                            <p className="text-2xl font-bold text-gray-900">{activeCount}</p>
-                        </div>
-                    </div>
-                </div>
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-amber-50 p-3 rounded-lg">
-                            <Clock className="h-6 w-6 text-amber-600" />
-                        </div>
-                        <div>
-                            <p className="text-sm text-gray-600">En attente</p>
-                            <p className="text-2xl font-bold text-gray-900">{pendingCount}</p>
-                        </div>
-                    </div>
-                </div>
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-blue-50 p-3 rounded-lg">
-                            <CheckCircle2 className="h-6 w-6 text-blue-600" />
-                        </div>
-                        <div>
-                            <p className="text-sm text-gray-600">Terminé</p>
-                            <p className="text-2xl font-bold text-gray-900">{completedCount}</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Table */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            {/* Table Area */}
+            <div className="bg-white/70 dark:bg-white/5 backdrop-blur-2xl rounded-[2.5rem] border border-gray-200 dark:border-white/10 overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
+                    <table className="min-w-full divide-y divide-gray-100 dark:divide-white/5">
+                        <thead className="bg-gray-50/50 dark:bg-white/5">
                             <tr>
-                                <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                                <th scope="col" className="px-6 py-5 text-left text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">
                                     Projet
                                 </th>
-                                <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                                <th scope="col" className="px-6 py-5 text-left text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">
                                     Langue
                                 </th>
-                                <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                                <th scope="col" className="px-6 py-5 text-left text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">
                                     Taille
                                 </th>
-                                <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                                <th scope="col" className="px-6 py-5 text-left text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">
                                     Assigné à
                                 </th>
-                                <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                                <th scope="col" className="px-6 py-5 text-left text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">
                                     Statut
                                 </th>
-                                <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                                <th scope="col" className="px-6 py-5 text-left text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">
                                     Progression
                                 </th>
-                                <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                                <th scope="col" className="px-6 py-5 text-right text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">
                                     Actions
                                 </th>
                             </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
+                        <tbody className="bg-transparent divide-y divide-gray-50 dark:divide-white/5">
                             {projects.map((project) => {
                                 const assignee = Array.isArray(project.employees)
                                     ? project.employees[0]?.full_name
                                     : project.employees?.full_name
 
                                 return (
-                                    <tr key={project.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-6 py-4">
+                                    <tr key={project.id} className="hover:bg-indigo-50/30 dark:hover:bg-white/5 transition-all group">
+                                        <td className="px-6 py-5">
                                             <div>
-                                                <div className="text-sm font-medium text-gray-900">{project.project_name}</div>
+                                                <div className="text-sm font-black text-gray-900 dark:text-white transition-colors">{project.project_name}</div>
                                                 {project.domain_name && (
                                                     <a
                                                         href={project.domain_name.startsWith('http') ? project.domain_name : `https://${project.domain_name}`}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
-                                                        className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1 mt-1 group"
+                                                        className="text-[10px] text-indigo-500 hover:text-indigo-700 dark:text-indigo-400 flex items-center gap-1 mt-1 group w-fit"
                                                     >
                                                         <Globe className="h-3 w-3" />
-                                                        <span className="group-hover:underline">{project.domain_name}</span>
+                                                        <span className="group-hover:underline font-bold uppercase tracking-widest">{project.domain_name}</span>
                                                     </a>
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className="text-sm text-gray-600 font-medium">{project.language || '-'}</span>
+                                        <td className="px-6 py-5 whitespace-nowrap">
+                                            <span className="text-xs text-gray-600 dark:text-gray-400 font-bold uppercase tracking-widest">{project.language || '-'}</span>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
+                                        <td className="px-6 py-5 whitespace-nowrap">
                                             {project.project_size ? (
-                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${project.project_size.toLowerCase().includes('large') ? 'bg-purple-100 text-purple-800' :
-                                                    project.project_size.toLowerCase().includes('medium') ? 'bg-indigo-100 text-indigo-800' :
-                                                        'bg-gray-100 text-gray-800'
+                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider border ${project.project_size.toLowerCase().includes('large') ? 'bg-purple-50 dark:bg-purple-400/10 text-purple-700 dark:text-purple-400 border-purple-100 dark:border-purple-400/20' :
+                                                    project.project_size.toLowerCase().includes('medium') ? 'bg-blue-50 dark:bg-blue-400/10 text-blue-700 dark:text-blue-400 border-blue-100 dark:border-blue-400/20' :
+                                                        'bg-gray-50 dark:bg-white/5 text-gray-700 dark:text-gray-400 border-gray-100 dark:border-white/10'
                                                     }`}>
                                                     {project.project_size}
                                                 </span>
                                             ) : (
-                                                <span className="text-sm text-gray-400">-</span>
+                                                <span className="text-xs text-gray-400">-</span>
                                             )}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
+                                        <td className="px-6 py-5 whitespace-nowrap">
                                             {project.employees ? (
                                                 <div className="flex items-center gap-3">
                                                     <EmployeeAvatar
                                                         avatarUrl={Array.isArray(project.employees) ? project.employees[0]?.avatar_url : project.employees?.avatar_url}
                                                         fullName={Array.isArray(project.employees) ? project.employees[0]?.full_name : project.employees?.full_name}
-                                                        className="h-8 w-8 text-[10px]"
+                                                        className="h-8 w-8 text-[10px] font-black border border-white dark:border-white/10 shadow-sm"
                                                     />
-                                                    <span className="text-sm font-semibold text-gray-900">
+                                                    <span className="text-xs font-black text-gray-900 dark:text-white transition-colors">
                                                         {Array.isArray(project.employees) ? project.employees[0]?.full_name : project.employees?.full_name}
                                                     </span>
                                                 </div>
                                             ) : (
-                                                <span className="text-sm text-gray-400 flex items-center gap-2">
+                                                <span className="text-xs text-gray-400 flex items-center gap-2 font-bold uppercase tracking-widest">
                                                     <User className="h-4 w-4" />
-                                                    Non assigné
+                                                    Libre
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${project.status === 'completed' ? 'bg-blue-100 text-blue-800' :
-                                                project.status === 'in_progress' ? 'bg-emerald-100 text-emerald-800' :
-                                                    'bg-amber-100 text-amber-800'
+                                        <td className="px-6 py-5 whitespace-nowrap">
+                                            <span className={`inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border ${project.status === 'completed' ? 'bg-emerald-50 dark:bg-emerald-400/10 text-emerald-700 dark:text-emerald-400 border-emerald-100 dark:border-emerald-400/20' :
+                                                project.status === 'in_progress' ? 'bg-blue-50 dark:bg-blue-400/10 text-blue-700 dark:text-blue-400 border-blue-100 dark:border-blue-400/20' :
+                                                    'bg-amber-50 dark:bg-amber-400/10 text-amber-700 dark:text-amber-400 border-amber-100 dark:border-amber-400/20'
                                                 }`}>
                                                 {project.status === 'in_progress' ? 'En cours' :
                                                     project.status === 'completed' ? 'Terminé' : 'En attente'}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
+                                        <td className="px-6 py-5 whitespace-nowrap">
                                             <div className="flex items-center gap-3">
-                                                <div className="flex-1 bg-gray-200 rounded-full h-2 max-w-[120px]">
+                                                <div className="flex-1 bg-gray-100 dark:bg-white/5 rounded-full h-2 min-w-[100px] overflow-hidden">
                                                     <div
-                                                        className={`h-2 rounded-full transition-all duration-500 ${project.status === 'completed' ? 'bg-gradient-to-r from-blue-500 to-blue-600' :
-                                                            project.status === 'in_progress' ? 'bg-gradient-to-r from-emerald-500 to-emerald-600' :
-                                                                'bg-gradient-to-r from-amber-500 to-amber-600'
+                                                        className={`h-full rounded-full transition-all duration-1000 shadow-sm ${project.status === 'completed' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-500/20' :
+                                                            project.status === 'in_progress' ? 'bg-gradient-to-r from-blue-500 to-indigo-500 shadow-blue-500/20' :
+                                                                'bg-gradient-to-r from-amber-500 to-orange-500 shadow-amber-500/20'
                                                             }`}
                                                         style={{ width: `${project.progress}%` }}
                                                     ></div>
                                                 </div>
-                                                <span className="text-sm font-medium text-gray-700 min-w-[40px]">{project.progress}%</span>
+                                                <span className="text-[10px] font-black text-gray-900 dark:text-white transition-colors">{project.progress}%</span>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                            <div className="flex justify-end gap-2">
+                                        <td className="px-6 py-5 whitespace-nowrap text-right text-sm font-medium">
+                                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
                                                 {/* ────────────────────────────────────────────
                                                     منطق الصلاحيات:
                                                     - View: متاح للجميع
@@ -277,11 +260,10 @@ export default async function ProjectsPage({
                                                 {/* View button - available to everyone */}
                                                 <Link
                                                     href={`/projects/${project.id}`}
-                                                    className="inline-flex items-center gap-1 px-3 py-1.5 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
+                                                    className="p-2.5 bg-white dark:bg-white/5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-400/10 border border-gray-100 dark:border-white/10 rounded-xl transition-all shadow-sm"
                                                     title="Voir les détails"
                                                 >
                                                     <Eye className="h-4 w-4" />
-
                                                 </Link>
 
                                                 {/* Edit/Delete buttons -  Disabled for Admin (Read-only), Employee only for own projects */}
@@ -289,21 +271,19 @@ export default async function ProjectsPage({
                                                     <>
                                                         <Link
                                                             href={`/projects/${project.id}/edit`}
-                                                            className="inline-flex items-center gap-1 px-3 py-1.5 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                            className="p-2.5 bg-white dark:bg-white/5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-400/10 border border-gray-100 dark:border-white/10 rounded-xl transition-all shadow-sm"
                                                             title="Modifier le projet"
                                                         >
                                                             <Edit className="h-4 w-4" />
-
                                                         </Link>
                                                         <form action={deleteProject}>
                                                             <input type="hidden" name="id" value={project.id} />
                                                             <button
                                                                 type="submit"
-                                                                className="inline-flex items-center gap-1 px-3 py-1.5 text-red-600 hover:text-red-900 hover:bg-red-50 rounded-lg transition-colors"
+                                                                className="p-2.5 bg-white dark:bg-white/5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-400/10 border border-gray-100 dark:border-white/10 rounded-xl transition-all shadow-sm"
                                                                 title="Supprimer le projet"
                                                             >
                                                                 <Trash2 className="h-4 w-4" />
-
                                                             </button>
                                                         </form>
                                                     </>

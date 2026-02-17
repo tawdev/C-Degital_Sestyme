@@ -49,56 +49,68 @@ export default function CallsDashboard() {
     }
 
     return (
-        <div className="max-w-7xl mx-auto space-y-8 pb-12">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-8 rounded-2xl border border-gray-100 shadow-sm">
-                <div>
-                    <div className="flex items-center gap-3 mb-2 text-indigo-600 font-semibold">
-                        <div className="p-2 bg-indigo-50 rounded-lg">
-                            <Monitor className="w-5 h-5" />
-                        </div>
-                        <span className="text-sm tracking-wider uppercase">Administration</span>
-                    </div>
-                    <h1 className="text-3xl font-black text-gray-900">Enregistrements d'appels</h1>
-                    <p className="text-gray-500 mt-1">Consultez, écoutez et visionnez tous les appels enregistrés du système.</p>
-                </div>
+        <div className="max-w-7xl mx-auto space-y-10 pb-12 transition-colors duration-500">
+            {/* Header section with rich aesthetics */}
+            <div className="relative overflow-hidden bg-white/70 dark:bg-white/5 backdrop-blur-2xl p-8 md:p-12 rounded-[2.5rem] border border-gray-200 dark:border-white/10 shadow-2xl shadow-indigo-900/5">
+                {/* Background decorative elements */}
+                <div className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-50 dark:bg-indigo-600/10 rounded-full blur-3xl opacity-50" />
+                <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-purple-50 dark:bg-purple-600/10 rounded-full blur-3xl opacity-50" />
 
-                <div className="flex items-center gap-3">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="Rechercher par nom..."
-                            className="pl-10 pr-4 py-2 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 w-64 text-gray-900"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
+                <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-3 text-indigo-600 dark:text-indigo-400 font-black">
+                            <div className="p-2.5 bg-indigo-50 dark:bg-white/5 rounded-2xl shadow-sm border border-transparent dark:border-white/10">
+                                <Monitor className="w-5 h-5" />
+                            </div>
+                            <span className="text-xs tracking-[0.2em] uppercase">Administration System</span>
+                        </div>
+                        <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-gray-900 dark:text-white tracking-tight">Historique des Appels</h1>
+                        <p className="text-gray-500 dark:text-indigo-200/60 max-w-lg font-medium text-lg">Consultez, écoutez et visionnez tous les échanges enregistrés avec une clarté absolue.</p>
                     </div>
-                    <select
-                        className="px-4 py-2 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 text-gray-900"
-                        value={filterType}
-                        onChange={(e: any) => setFilterType(e.target.value)}
-                    >
-                        <option value="all">Tous les types</option>
-                        <option value="audio">Audio uniquement</option>
-                        <option value="video">Vidéo uniquement</option>
-                    </select>
+
+                    <div className="flex flex-col sm:flex-row items-center gap-4">
+                        <div className="relative flex-1 sm:flex-none group">
+                            <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-indigo-500 transition-colors" />
+                            <input
+                                type="text"
+                                placeholder="Rechercher..."
+                                className="pl-12 pr-4 py-4 bg-gray-50/50 dark:bg-white/5 border border-transparent dark:border-white/5 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 focus:bg-white dark:focus:bg-white/10 transition-all text-gray-900 dark:text-white placeholder:text-gray-400 w-full sm:w-64"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                        </div>
+                        <div className="relative w-full sm:w-auto">
+                            <Filter className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                            <select
+                                className="pl-12 pr-10 py-4 bg-gray-50/50 dark:bg-white/5 border border-transparent dark:border-white/5 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 focus:bg-white dark:focus:bg-white/10 transition-all text-gray-900 dark:text-white appearance-none cursor-pointer w-full"
+                                value={filterType}
+                                onChange={(e: any) => setFilterType(e.target.value)}
+                            >
+                                <option value="all">Tous les types</option>
+                                <option value="audio">Audio uniquement</option>
+                                <option value="video">Vidéo uniquement</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             {/* Content Area */}
             {loading ? (
-                <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
-                    <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4" />
-                    <p className="text-gray-500 font-medium animate-pulse text-gray-900">Chargement des enregistrements...</p>
+                <div className="flex flex-col items-center justify-center py-32 bg-white/50 dark:bg-white/5 backdrop-blur-xl rounded-[2.5rem] border border-dashed border-gray-200 dark:border-white/10">
+                    <div className="relative">
+                        <div className="w-16 h-16 border-4 border-indigo-600/10 dark:border-white/5 rounded-full" />
+                        <div className="absolute inset-0 w-16 h-16 border-4 border-indigo-600 dark:border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                    <p className="text-gray-900 dark:text-white font-black uppercase tracking-widest text-[10px] mt-8 animate-pulse">Synchronisation des enregistrements...</p>
                 </div>
             ) : filteredLogs.length === 0 ? (
-                <div className="bg-white rounded-3xl border border-dashed border-gray-200 p-20 text-center">
-                    <div className="bg-gray-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <FileVideo className="w-10 h-10 text-gray-300" />
+                <div className="bg-white/50 dark:bg-white/5 backdrop-blur-xl rounded-[2.5rem] border border-dashed border-gray-200 dark:border-white/10 p-20 text-center">
+                    <div className="bg-gray-50 dark:bg-white/5 w-24 h-24 rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-inner">
+                        <FileVideo className="w-10 h-10 text-gray-300 dark:text-gray-600" />
                     </div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">Aucun enregistrement trouvé</h3>
-                    <p className="text-gray-500">Les nouveaux appels apparaîtront ici dès qu'ils seront terminés.</p>
+                    <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-3 tracking-tight">Aucun enregistrement trouvé</h3>
+                    <p className="text-gray-500 dark:text-indigo-200/40 max-w-sm mx-auto font-medium">Les nouveaux appels apparaîtront ici dès qu'ils seront terminés.</p>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -108,39 +120,43 @@ export default function CallsDashboard() {
                             <div
                                 key={log.id}
                                 onClick={() => setSelectedCall(log)}
-                                className={`group relative bg-white rounded-2xl p-5 border transition-all cursor-pointer ${selectedCall?.id === log.id ? 'border-indigo-600 shadow-md ring-1 ring-indigo-600' : 'border-gray-100 hover:border-indigo-200 hover:shadow-sm'}`}
+                                className={`group relative bg-white/70 dark:bg-white/5 backdrop-blur-xl rounded-[2rem] p-6 border transition-all cursor-pointer overflow-hidden ${selectedCall?.id === log.id
+                                    ? 'border-indigo-600 dark:border-indigo-500 shadow-xl shadow-indigo-900/10 ring-1 ring-indigo-600 dark:ring-indigo-500'
+                                    : 'border-transparent hover:border-indigo-100 dark:hover:border-white/10 hover:shadow-2xl shadow-indigo-900/5'}`}
                             >
-                                <div className="flex items-center gap-4">
-                                    <div className={`p-4 rounded-xl shadow-sm ${log.type === 'video' ? 'bg-purple-50 text-purple-600' : 'bg-blue-50 text-blue-600'}`}>
+                                <div className="flex items-center gap-5">
+                                    <div className={`p-4 rounded-[1.2rem] shadow-sm shrink-0 border transition-colors ${log.type === 'video'
+                                        ? 'bg-purple-50 dark:bg-purple-400/10 text-purple-600 dark:text-purple-400 border-purple-100 dark:border-purple-400/20'
+                                        : 'bg-blue-50 dark:bg-blue-400/10 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-400/20'}`}>
                                         {log.type === 'video' ? <Video className="w-6 h-6" /> : <Phone className="w-6 h-6" />}
                                     </div>
 
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className="font-bold text-gray-900 truncate">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <span className={`text-lg font-black truncate transition-colors ${selectedCall?.id === log.id ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-900 dark:text-white'}`}>
                                                 {log.conversation?.is_group ? log.conversation.name : log.caller?.full_name}
                                             </span>
                                             {log.conversation?.is_group && (
-                                                <span className="px-2 py-0.5 bg-gray-100 text-[10px] font-bold text-gray-500 rounded-md uppercase tracking-wider">Groupe</span>
+                                                <span className="px-3 py-1 bg-gray-100 dark:bg-white/10 text-[9px] font-black text-gray-500 dark:text-gray-400 rounded-lg uppercase tracking-widest border border-gray-200 dark:border-white/5">Groupe</span>
                                             )}
                                         </div>
-                                        <div className="flex items-center gap-4 text-xs text-gray-500 font-medium">
-                                            <div className="flex items-center gap-1.5">
-                                                <Calendar className="w-3.5 h-3.5" />
-                                                {format(new Date(log.created_at), "d MMMM yyyy 'à' HH:mm", { locale: fr })}
+                                        <div className="flex items-center gap-6 text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-widest">
+                                            <div className="flex items-center gap-2">
+                                                <Calendar className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
+                                                {format(new Date(log.created_at), "d MMMM yyyy", { locale: fr })}
                                             </div>
-                                            <div className="flex items-center gap-1.5">
-                                                <Clock className="w-3.5 h-3.5" />
+                                            <div className="flex items-center gap-2">
+                                                <Clock className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
                                                 {formatDuration(log.duration)}
                                             </div>
                                         </div>
                                     </div>
 
-                                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-indigo-600 transition-colors">
+                                    <div className="flex items-center gap-2 transition-all group-hover:translate-x-0 sm:translate-x-4 opacity-0 group-hover:opacity-100">
+                                        <button className="p-3 bg-gray-50 dark:bg-white/5 hover:bg-indigo-50 dark:hover:bg-indigo-400/10 rounded-xl text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 border border-transparent hover:border-indigo-100 dark:hover:border-indigo-400/20 transition-all">
                                             <Download className="w-5 h-5" />
                                         </button>
-                                        <ChevronRight className={`w-5 h-5 transition-transform ${selectedCall?.id === log.id ? 'rotate-90 text-indigo-600' : 'text-gray-300'}`} />
+                                        <ChevronRight className={`w-6 h-6 transition-all ${selectedCall?.id === log.id ? 'rotate-90 text-indigo-600 dark:text-indigo-400 scale-125' : 'text-gray-200 dark:text-white/5'}`} />
                                     </div>
                                 </div>
                             </div>
@@ -149,85 +165,92 @@ export default function CallsDashboard() {
 
                     {/* Preview Panel */}
                     <div className="lg:col-span-1">
-                        <div className="bg-white rounded-3xl border border-gray-100 shadow-xl overflow-hidden sticky top-32">
-                            {selectedCall ? (
-                                <div className="animate-in fade-in slide-in-from-right-4 duration-500">
-                                    <div className="p-6 bg-gray-50 border-b border-gray-100">
-                                        <div className="flex items-center justify-between mb-6">
-                                            <h3 className="font-bold text-gray-900">Détails de l'appel</h3>
-                                            <button
-                                                onClick={() => setSelectedCall(null)}
-                                                className="p-2 hover:bg-gray-200 rounded-full transition-colors"
-                                            >
-                                                <X className="w-4 h-4 text-gray-500" />
-                                            </button>
-                                        </div>
-
-                                        <div className="flex items-center gap-4 mb-6">
-                                            <EmployeeAvatar
-                                                avatarUrl={selectedCall.caller?.avatar_url}
-                                                fullName={selectedCall.caller?.full_name}
-                                                className="w-16 h-16 ring-4 ring-white shadow-md"
-                                            />
-                                            <div>
-                                                <p className="font-black text-gray-900 text-lg">{selectedCall.caller?.full_name}</p>
-                                                <p className="text-sm text-gray-500">{selectedCall.caller?.role || 'Employé'}</p>
+                        {/* Preview Panel with Glassmorphism */}
+                        <div className="lg:col-span-1">
+                            <div className="bg-white/70 dark:bg-white/5 backdrop-blur-2xl rounded-[2.5rem] border border-gray-100 dark:border-white/10 shadow-2xl shadow-indigo-900/10 overflow-hidden sticky top-32 transition-colors">
+                                {selectedCall ? (
+                                    <div className="animate-in fade-in slide-in-from-right-8 duration-700">
+                                        <div className="p-8 bg-gray-50/50 dark:bg-white/5 border-b border-gray-100 dark:border-white/5">
+                                            <div className="flex items-center justify-between mb-8">
+                                                <h3 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-widest">Détails de l'appel</h3>
+                                                <button
+                                                    onClick={() => setSelectedCall(null)}
+                                                    className="p-3 bg-white dark:bg-white/10 hover:bg-gray-100 dark:hover:bg-white/20 rounded-full transition-all border border-gray-100 dark:border-white/10 shadow-sm"
+                                                >
+                                                    <X className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                                                </button>
                                             </div>
-                                        </div>
 
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Durée</p>
-                                                <p className="font-black text-indigo-600 text-xl">{formatDuration(selectedCall.duration)}</p>
-                                            </div>
-                                            <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Type</p>
-                                                <p className="font-black text-gray-900 text-xl capitalize">{selectedCall.type}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="p-6 space-y-6">
-                                        <div className="aspect-video bg-gray-950 rounded-2xl overflow-hidden shadow-inner relative group">
-                                            {selectedCall.signed_url ? (
-                                                <video
-                                                    key={selectedCall.id}
-                                                    src={selectedCall.signed_url}
-                                                    controls
-                                                    className="w-full h-full object-contain"
+                                            <div className="flex items-center gap-5 mb-8">
+                                                <EmployeeAvatar
+                                                    avatarUrl={selectedCall.caller?.avatar_url}
+                                                    fullName={selectedCall.caller?.full_name}
+                                                    className="w-20 h-20 ring-4 ring-white dark:ring-white/10 shadow-2xl"
                                                 />
-                                            ) : (
-                                                <div className="flex flex-col items-center justify-center h-full text-gray-500 text-sm">
-                                                    <MicOff className="w-10 h-10 mb-2 opacity-20" />
-                                                    Enregistrement audio uniquement
+                                                <div className="space-y-1">
+                                                    <p className="font-black text-gray-900 dark:text-white text-xl tracking-tight">{selectedCall.caller?.full_name}</p>
+                                                    <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">{selectedCall.caller?.role || 'Membre de l\'équipe'}</p>
                                                 </div>
-                                            )}
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="bg-white/50 dark:bg-white/5 backdrop-blur-sm p-5 rounded-[1.5rem] border border-white dark:border-white/10 shadow-inner">
+                                                    <p className="text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">Durée</p>
+                                                    <p className="font-black text-indigo-600 dark:text-indigo-400 text-2xl tracking-tighter">{formatDuration(selectedCall.duration)}</p>
+                                                </div>
+                                                <div className="bg-white/50 dark:bg-white/5 backdrop-blur-sm p-5 rounded-[1.5rem] border border-white dark:border-white/10 shadow-inner">
+                                                    <p className="text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">Format</p>
+                                                    <p className="font-black text-gray-900 dark:text-white text-2xl capitalize tracking-tighter">{selectedCall.type}</p>
+                                                </div>
+                                            </div>
                                         </div>
 
-                                        <div className="space-y-3 pt-4">
-                                            <a
-                                                href={selectedCall.signed_url}
-                                                download
-                                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] shadow-lg shadow-indigo-100"
-                                            >
-                                                <Download className="w-5 h-5" />
-                                                Télécharger le MP4
-                                            </a>
-                                            <button className="w-full bg-white hover:bg-red-50 text-red-600 border border-red-100 font-bold py-4 rounded-2xl flex items-center justify-center gap-3 transition-all">
-                                                <Trash2 className="w-5 h-5" />
-                                                Supprimer définitivement
-                                            </button>
+                                        <div className="p-8 space-y-8">
+                                            <div className="aspect-video bg-gray-950 rounded-[2rem] overflow-hidden shadow-2xl relative group ring-1 ring-white/10">
+                                                {selectedCall.signed_url ? (
+                                                    <video
+                                                        key={selectedCall.id}
+                                                        src={selectedCall.signed_url}
+                                                        controls
+                                                        className="w-full h-full object-contain"
+                                                    />
+                                                ) : (
+                                                    <div className="flex flex-col items-center justify-center h-full text-gray-500 p-8 text-center">
+                                                        <div className="bg-white/5 p-5 rounded-full mb-4">
+                                                            <MicOff className="w-10 h-10 opacity-40 text-gray-400" />
+                                                        </div>
+                                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-600">Enregistrement audio</p>
+                                                        <p className="text-xs font-medium text-gray-700 mt-2">Visuel non disponible</p>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="space-y-4">
+                                                <a
+                                                    href={selectedCall.signed_url}
+                                                    download
+                                                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-5 rounded-[1.5rem] flex items-center justify-center gap-3 transition-all active:scale-[0.98] shadow-xl shadow-indigo-900/20 uppercase tracking-widest text-xs"
+                                                >
+                                                    <Download className="w-5 h-5" />
+                                                    Télécharger l'archive
+                                                </a>
+                                                <button className="w-full bg-white dark:bg-white/5 hover:bg-red-50 dark:hover:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-500/20 font-black py-5 rounded-[1.5rem] flex items-center justify-center gap-3 transition-all uppercase tracking-widest text-xs">
+                                                    <Trash2 className="w-5 h-5" />
+                                                    Supprimer l'archive
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            ) : (
-                                <div className="p-12 text-center text-gray-400">
-                                    <div className="bg-gray-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                                        <Volume2 className="w-8 h-8" />
+                                ) : (
+                                    <div className="p-16 text-center animate-in fade-in duration-500">
+                                        <div className="bg-indigo-50 dark:bg-indigo-400/10 w-24 h-24 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-inner border border-transparent dark:border-indigo-400/20">
+                                            <Volume2 className="w-10 h-10 text-indigo-400 dark:text-indigo-500 animate-pulse" />
+                                        </div>
+                                        <h4 className="text-gray-900 dark:text-white font-black text-lg mb-2 tracking-tight">Lecteur inactif</h4>
+                                        <p className="text-xs font-medium text-gray-400 dark:text-gray-500 max-w-[200px] mx-auto leading-relaxed">Veuillez sélectionner un enregistrement pour activer les contrôles multimédias.</p>
                                     </div>
-                                    <p className="text-sm font-medium">Sélectionnez un appel pour voir les détails et lire l'enregistrement.</p>
-                                </div>
-                            )}
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
