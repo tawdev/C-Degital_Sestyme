@@ -1,8 +1,8 @@
 'use client'
 
-import React from 'react'
-import { MicOff, VideoOff, Loader2, Monitor } from 'lucide-react'
-import { motion } from 'framer-motion'
+import React, { useRef, useEffect, useState } from 'react'
+import { MicOff, VideoOff, Loader2, Monitor, MoreVertical, Ban, Mic } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import EmployeeAvatar from '@/components/employee-avatar'
 import { cn } from '@/lib/utils'
 
@@ -16,10 +16,17 @@ interface VideoCardProps {
     isHost?: boolean
     connectionState?: string
     isMainStage?: boolean // True if this video is the "Presenting" focused one
+    isActiveSpeaker?: boolean
+    isHandRaised?: boolean
     className?: string
 }
 
-export default function VideoCard({
+interface Reaction {
+    id: string
+    emoji: string
+}
+
+export const VideoCard = ({
     stream,
     participant,
     isLocal = false,
@@ -29,21 +36,69 @@ export default function VideoCard({
     isHost = false,
     connectionState = 'connected',
     isMainStage = false,
+    isActiveSpeaker = false,
+    isHandRaised = false,
     className
-}: VideoCardProps) {
+}: VideoCardProps) => {
+    const videoRef = useRef<HTMLVideoElement>(null)
+    const [reactions, setReactions] = useState<Reaction[]>([])
+
+    useEffect(() => {
+        if (videoRef.current && stream) {
+            videoRef.current.srcObject = stream
+        }
+    }, [stream])
+
+    useEffect(() => {
+        const handleReaction = (e: any) => {
+            if (e.detail.userId === participant.id) {
+                const id = Math.random().toString(36).substring(7)
+                setReactions((prev: Reaction[]) => [...prev, { id, emoji: e.detail.emoji }])
+
+                // Clear reaction after animation
+                setTimeout(() => {
+                    setReactions((prev: Reaction[]) => prev.filter((r: Reaction) => r.id !== id))
+                }, 3000)
+            }
+        }
+
+        window.addEventListener('meeting-reaction', handleReaction)
+        return () => window.removeEventListener('meeting-reaction', handleReaction)
+    }, [participant.id])
 
     return (
         <motion.div
-            layoutId={`video-${participant.id}`}
-            className={cn(
-                "relative bg-gray-800 rounded-3xl overflow-hidden border border-white/5 shadow-2xl group transition-all duration-500 hover:shadow-indigo-500/10",
-                className
-            )}
+            layout
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className={cn(
+                "relative bg-gray-800 rounded-3xl overflow-hidden border-2 shadow-2xl group transition-all duration-500 hover:shadow-indigo-500/10",
+                isActiveSpeaker ? "border-indigo-500 shadow-[0_0_20px_rgba(99,102,241,0.3)] scale-[1.02] z-10" : "border-white/5",
+                className
+            )}
         >
+            {/* Floating Reactions */}
+            <AnimatePresence>
+                {reactions.map((r: Reaction) => (
+                    <motion.div
+                        key={r.id}
+                        initial={{ y: 20, opacity: 0, scale: 0.5, x: Math.random() * 40 - 20 }}
+                        animate={{
+                            y: -150,
+                            opacity: [0, 1, 1, 0],
+                            scale: [0.5, 1.5, 1.5, 1],
+                            x: Math.random() * 100 - 50
+                        }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 2.5, ease: "easeOut" }}
+                        className="absolute bottom-10 left-1/2 -translate-x-1/2 text-4xl z-50 pointer-events-none"
+                    >
+                        {r.emoji}
+                    </motion.div>
+                ))}
+            </AnimatePresence>
             {/* Video or Fallback */}
             {stream && !isCameraOff ? (
                 <video
@@ -141,6 +196,13 @@ export default function VideoCard({
             {isMuted && (
                 <div className="absolute top-4 right-4 p-2 bg-red-500 rounded-xl shadow-xl shadow-red-500/20 z-20 border border-white/10 animate-in zoom-in-50 duration-200">
                     <MicOff className="w-4 h-4 text-white" />
+                </div>
+            )}
+
+            {/* Hand Raised Icon */}
+            {isHandRaised && (
+                <div className="absolute top-4 left-4 p-2 bg-amber-500 rounded-xl shadow-xl shadow-amber-500/20 z-[25] border border-white/10 animate-bounce cursor-default">
+                    <span className="text-lg">✋</span>
                 </div>
             )}
         </motion.div>
