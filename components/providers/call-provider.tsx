@@ -120,11 +120,15 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     const screenStreamRef = useRef<MediaStream | null>(null)
 
     const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map())
+    const makingOffer = useRef<Map<string, boolean>>(new Map())
+    const isSettingRemoteDescription = useRef<Map<string, boolean>>(new Map())
     const pendingCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map())
     const mediaRecorderRef = useRef<MediaRecorder | null>(null)
     const recordingChunks = useRef<Blob[]>([])
     const timerRef = useRef<NodeJS.Timeout | null>(null)
     const channelRef = useRef<any>(null)
+    const lobbyIntervalRef = useRef<NodeJS.Timeout | null>(null)
+    const isWaitingRef = useRef(false)
     const audioContextRef = useRef<AudioContext | null>(null)
     const analysersRef = useRef<Map<string, AnalyserNode>>(new Map())
     const volumeIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -198,6 +202,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
             peerConnections.current.delete(userId)
         }
         pendingCandidates.current.delete(userId)
+        makingOffer.current.delete(userId)
+        isSettingRemoteDescription.current.delete(userId)
         setRemoteStreams(prev => {
             const next = new Map(prev)
             next.delete(userId)
@@ -209,6 +215,11 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
             return next
         })
         setParticipants(prev => prev.filter(p => p.id !== userId))
+        setParticipantStates(prev => {
+            const next = new Map(prev)
+            next.delete(userId)
+            return next
+        })
         if (sharingUser === userId) {
             setSharingUser(null)
             setRemoteScreenStreams(prev => {
@@ -236,7 +247,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
             data.isMuted = isMutedRef.current
             data.isCameraOff = isCameraOffRef.current
         }
-        const isSpecialEvent = ['media-state', 'recording-state', 'request-state', 'command', 'hand-raised', 'reaction', 'lobby', 'poll'].includes(data.type)
+        const isSpecialEvent = ['media-state', 'recording-state', 'request-state', 'command', 'hand-raised', 'reaction', 'lobby', 'poll', 'chat', 'screen-sharing'].includes(data.type)
         await channelRef.current.send({
             type: 'broadcast',
             event: isSpecialEvent ? data.type : 'signal',
@@ -281,6 +292,19 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
                 return next
             })
         }
+        pc.onnegotiationneeded = async () => {
+            try {
+                makingOffer.current.set(targetId, true)
+                const offer = await pc.createOffer()
+                if (pc.signalingState !== 'stable') return // Avoid creating offer if not stable
+                await pc.setLocalDescription(offer)
+                sendSignal(targetId, { type: 'offer', sdp: pc.localDescription }, currentUserId)
+            } catch (err) {
+                console.error('[CallProvider] Negotiation error:', err)
+            } finally {
+                makingOffer.current.set(targetId, false)
+            }
+        }
         if (localStreamRef.current) {
             localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current!))
         }
@@ -294,60 +318,106 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
             return
         }
         const pc = createPeerConnection(targetId, currentUserId)
-        try {
-            const offer = await pc.createOffer()
-            await pc.setLocalDescription(offer)
-            sendSignal(targetId, { type: 'offer', sdp: offer }, currentUserId)
-        } catch (err) { console.error(err) }
+        // No explicit offer creation here, it's handled by onnegotiationneeded
+        // However, we might want to send an initial 'initiate' signal to prompt the other side to create a PC
+        // if they haven't yet, and then they will trigger negotiationneeded.
+        // For Perfect Negotiation, the polite side (currentUserId < targetId) initiates.
+        if (currentUserId < targetId) {
+            sendSignal(targetId, { type: 'initiate' }, currentUserId)
+        }
     }
 
     const handleSignal = async (payload: any, currentUserId: string) => {
         const { from, type, sdp, candidate } = payload
         let pc = peerConnections.current.get(from)
+        if (!pc && (type === 'offer' || type === 'initiate')) {
+            pc = createPeerConnection(from, currentUserId)
+        }
+        if (!pc) return
 
-        if (type === 'offer') {
-            if (!localStreamRef.current) {
-                setTimeout(() => handleSignal(payload, currentUserId), 1000)
-                return
-            }
-            if (!pc) pc = createPeerConnection(from, currentUserId)
-            try {
-                await pc.setRemoteDescription(new RTCSessionDescription(sdp))
+        const isPolite = currentUserId < from
+
+        try {
+            if (type === 'offer' || type === 'initiate') {
+                // Ignore 'initiate' if it's not an offer, it's just to ensure PC exists
+                if (type === 'initiate') return
+
+                const offerCollision = makingOffer.current.get(from) || pc.signalingState !== 'stable'
+
+                const ignoreOffer = !isPolite && offerCollision
+                if (ignoreOffer) {
+                    console.log('[CallProvider] Ignoring offer (impolite side collision)')
+                    return
+                }
+
+                isSettingRemoteDescription.current.set(from, true)
+                if (offerCollision) {
+                    console.log('[CallProvider] Rolling back for incoming offer (polite side)')
+                    await Promise.all([
+                        pc.setLocalDescription({ type: 'rollback' }),
+                        pc.setRemoteDescription(new RTCSessionDescription(sdp))
+                    ])
+                } else {
+                    await pc.setRemoteDescription(new RTCSessionDescription(sdp))
+                }
+                isSettingRemoteDescription.current.delete(from)
+
                 const answer = await pc.createAnswer()
                 await pc.setLocalDescription(answer)
-                sendSignal(from, { type: 'answer', sdp: answer }, currentUserId)
+                sendSignal(from, { type: 'answer', sdp: pc.localDescription }, currentUserId)
+
+                // Flash pending candidates
                 const buffered = pendingCandidates.current.get(from) || []
-                for (const cand of buffered) await pc.addIceCandidate(new RTCIceCandidate(cand))
+                for (const cand of buffered) {
+                    await pc.addIceCandidate(new RTCIceCandidate(cand))
+                }
                 pendingCandidates.current.delete(from)
-            } catch (err) { console.error(err) }
-        } else if (type === 'answer' && pc) {
-            try {
-                await pc.setRemoteDescription(new RTCSessionDescription(sdp))
-                const buffered = pendingCandidates.current.get(from) || []
-                for (const cand of buffered) await pc.addIceCandidate(new RTCIceCandidate(cand))
-                pendingCandidates.current.delete(from)
-            } catch (err) { console.error(err) }
-        } else if (type === 'candidate') {
-            if (!candidate) return
-            if (pc && pc.remoteDescription && pc.remoteDescription.type) {
-                try { await pc.addIceCandidate(new RTCIceCandidate(candidate)) } catch (err) { console.error(err) }
-            } else {
-                const current = pendingCandidates.current.get(from) || []
-                pendingCandidates.current.set(from, [...current, candidate])
-            }
-        } else if (type === 'leave') {
-            handleParticipantLeave(from)
-        } else if (type === 'screen-sharing') {
-            if (payload.active) {
-                setSharingUser(from)
-            } else {
-                setSharingUser(null)
-                setRemoteScreenStreams(prev => {
-                    const next = new Map(prev)
-                    next.delete(from)
-                    return next
+
+            } else if (type === 'answer') {
+                if (pc.signalingState === 'have-local-offer' || pc.signalingState === 'have-remote-pranswer') {
+                    isSettingRemoteDescription.current.set(from, true)
+                    await pc.setRemoteDescription(new RTCSessionDescription(sdp))
+                    isSettingRemoteDescription.current.delete(from)
+                }
+            } else if (type === 'candidate') {
+                if (!candidate) return
+                try {
+                    if (pc.remoteDescription && pc.remoteDescription.type && !isSettingRemoteDescription.current.get(from)) {
+                        await pc.addIceCandidate(new RTCIceCandidate(candidate))
+                    } else {
+                        const current = pendingCandidates.current.get(from) || []
+                        pendingCandidates.current.set(from, [...current, candidate])
+                    }
+                } catch (err) {
+                    // Ignore candidate errors on impolite side during collision
+                    if (isPolite && pc.remoteDescription && pc.remoteDescription.type === 'offer') {
+                        console.warn('[CallProvider] Candidate error (polite side during offer collision):', err)
+                    } else {
+                        console.warn('[CallProvider] Candidate error:', err)
+                    }
+                }
+            } else if (type === 'leave') {
+                handleParticipantLeave(from)
+            } else if (type === 'screen-sharing') {
+                setParticipantStates(prev => {
+                    const newMap = new Map(prev)
+                    const current = newMap.get(from) || { isMuted: false, isCameraOff: false, isRecording: false, isScreenSharing: false }
+                    newMap.set(from, { ...current, isScreenSharing: payload.active })
+                    return newMap
                 })
+                if (payload.active) {
+                    setSharingUser(from)
+                } else {
+                    setSharingUser(null)
+                    setRemoteScreenStreams(prev => {
+                        const next = new Map(prev)
+                        next.delete(from)
+                        return next
+                    })
+                }
             }
+        } catch (err) {
+            console.error('[CallProvider] Signaling error:', err, 'Type:', type)
         }
     }
 
@@ -359,12 +429,14 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         setCurrentUser(user)
         setMeeting(mData)
 
-        const isHost = mData.host_id === user.id || user.role === 'Administrator'
+        const isHost = mData.host_id === user.id || user.role?.toLowerCase() === 'administrator'
         if (isHost) {
             setIsInCall(true)
             setIsWaiting(false)
+            isWaitingRef.current = false
         } else {
             setIsWaiting(true)
+            isWaitingRef.current = true
         }
 
         setStartTime(Date.now())
@@ -379,7 +451,11 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
                 if (payload.to === user.id || payload.to === 'everyone') handleSignal(payload, user.id)
             })
             .on('broadcast', { event: 'chat' }, ({ payload }: { payload: any }) => {
-                setMessages(prev => [...prev, payload])
+                setMessages(prev => {
+                    const exists = prev.some(m => m.id === payload.id)
+                    if (exists) return prev
+                    return [...prev, payload]
+                })
             })
             .on('broadcast', { event: 'media-state' }, ({ payload }: { payload: any }) => {
                 setParticipantStates(prev => {
@@ -401,16 +477,22 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
                 })
             })
             .on('broadcast', { event: 'lobby' }, ({ payload }: { payload: any }) => {
-                const isAdmin = user.role === 'Administrator'
+                const isAdmin = user.role?.toLowerCase() === 'administrator'
                 const isHost = mData.host_id === user.id || isAdmin
+                console.log('[CallProvider] Lobby signal received:', payload.actionType, 'isHost:', isHost, 'payloadFrom:', payload.from)
 
                 if (payload.actionType === 'request' && isHost) {
                     setJoinRequests(prev => {
                         if (prev.find(r => r.id === payload.from)) return prev
                         return [...prev, { ...payload.user, id: payload.from }]
                     })
-                } else if (payload.actionType === 'admit' && (payload.from === mData.host_id || payload.role === 'Administrator')) {
+                } else if (payload.actionType === 'admit' && (payload.from === mData.host_id || payload.role?.toLowerCase() === 'administrator')) {
                     setIsWaiting(false)
+                    isWaitingRef.current = false
+                    if (lobbyIntervalRef.current) {
+                        clearInterval(lobbyIntervalRef.current)
+                        lobbyIntervalRef.current = null
+                    }
                     setIsInCall(true)
                 }
             })
@@ -463,9 +545,40 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
                         user: { id: user.id, name: user.full_name, avatar: user.avatar_url },
                         online_at: new Date().toISOString()
                     })
-                    if (isHost) updateMeetingStatus(mid, 'live')
                     if (!isHost && !isInCall) {
-                        sendSignal(mData.host_id, { type: 'lobby', actionType: 'request', user: { name: user.full_name, avatar: user.avatar_url } }, user.id)
+                        const sendLobbyRequest = () => {
+                            if (isWaitingRef.current) {
+                                console.log('[CallProvider] Sending lobby request...')
+                                sendSignal('everyone', { type: 'lobby', actionType: 'request', user: { name: user.full_name, avatar: user.avatar_url } }, user.id)
+                            }
+                        }
+                        sendLobbyRequest()
+                        if (lobbyIntervalRef.current) clearInterval(lobbyIntervalRef.current)
+                        lobbyIntervalRef.current = setInterval(sendLobbyRequest, 5000)
+                    }
+
+                    // Fetch existing messages
+                    try {
+                        const { data: existingMsgs, error: fetchError } = await supabase
+                            .from('meeting_messages')
+                            .select('*')
+                            .eq('meeting_id', mid)
+                            .order('created_at', { ascending: true })
+
+                        if (fetchError) {
+                            console.warn('[CallProvider] Could not fetch messages (table might be missing):', fetchError.message)
+                        } else if (existingMsgs) {
+                            setMessages(existingMsgs.map((m: any) => ({
+                                id: m.id,
+                                sender: m.sender_id,
+                                name: m.sender_name,
+                                avatar: m.sender_avatar,
+                                content: m.content,
+                                timestamp: m.created_at
+                            })))
+                        }
+                    } catch (err) {
+                        console.warn('[CallProvider] Exception during message fetch:', err)
                     }
                 }
             })
@@ -484,6 +597,18 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         setIsWaiting(false)
         setMeetingId(null)
         setMeeting(null)
+        setMessages([]) // Reset messages for the next call
+        setParticipants([])
+        setRemoteStreams(new Map())
+        setRemoteScreenStreams(new Map())
+        setConnectionStates(new Map())
+        setParticipantStates(new Map())
+        setHandsRaised(new Set())
+        setJoinRequests([])
+        if (lobbyIntervalRef.current) {
+            clearInterval(lobbyIntervalRef.current)
+            lobbyIntervalRef.current = null
+        }
         localStorage.removeItem('active-meeting')
     }
 
@@ -536,7 +661,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     }
 
     const admitParticipant = (userId: string) => {
-        sendSignal(userId, { type: 'lobby', actionType: 'admit' }, currentUser.id)
+        sendSignal(userId, { type: 'lobby', actionType: 'admit', role: currentUser?.role }, currentUser.id)
         setJoinRequests(prev => prev.filter(r => r.id !== userId))
     }
 
@@ -605,11 +730,35 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     }
     const startRecording = () => { }
     const stopRecording = () => { }
-    const sendMessage = (content: string) => {
-        if (!currentUser) return
-        const msg = { id: Date.now().toString(), sender: currentUser.id, name: currentUser.full_name, avatar: currentUser.avatar_url, content, timestamp: new Date().toISOString() }
+    const sendMessage = async (content: string) => {
+        if (!currentUser || !meetingId) return
+        const msg = {
+            id: Math.random().toString(36).substring(7),
+            sender: currentUser.id,
+            name: currentUser.full_name,
+            avatar: currentUser.avatar_url,
+            content,
+            timestamp: new Date().toISOString()
+        }
+
+        // Optimistic update
         setMessages(prev => [...prev, msg])
+
+        // Broadcast
         sendSignal('everyone', { type: 'chat', ...msg }, currentUser.id)
+
+        // Save to DB
+        try {
+            await supabase.from('meeting_messages').insert({
+                meeting_id: meetingId,
+                sender_id: currentUser.id,
+                sender_name: currentUser.full_name,
+                sender_avatar: currentUser.avatar_url,
+                content: content
+            })
+        } catch (err) {
+            console.error('Error saving meeting message:', err)
+        }
     }
     const muteParticipant = (userId: string) => sendSignal(userId, { type: 'command', action: 'mute' }, currentUser.id)
     const kickParticipant = (userId: string) => sendSignal(userId, { type: 'command', action: 'kick' }, currentUser.id)

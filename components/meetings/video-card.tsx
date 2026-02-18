@@ -74,8 +74,8 @@ export const VideoCard = ({
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
             className={cn(
-                "relative bg-gray-800 rounded-3xl overflow-hidden border-2 shadow-2xl group transition-all duration-500 hover:shadow-indigo-500/10",
-                isActiveSpeaker ? "border-indigo-500 shadow-[0_0_20px_rgba(99,102,241,0.3)] scale-[1.02] z-10" : "border-white/5",
+                "relative bg-white dark:bg-gray-800 rounded-3xl overflow-hidden border-2 shadow-2xl group transition-all duration-500 hover:shadow-indigo-500/10",
+                isActiveSpeaker ? "border-indigo-500 shadow-[0_0_20px_rgba(99,102,241,0.3)] scale-[1.02] z-10" : "border-gray-100 dark:border-white/5",
                 className
             )}
         >
@@ -117,25 +117,25 @@ export const VideoCard = ({
                     )}
                 />
             ) : (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 bg-gray-900">
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 bg-gray-50 dark:bg-gray-900">
                     <div className="relative">
                         <EmployeeAvatar
                             avatarUrl={participant.avatar}
                             fullName={participant.name}
                             className={cn(
-                                "border-4 border-white/5 shadow-2xl transition-all duration-500",
+                                "border-4 border-white dark:border-white/5 shadow-2xl transition-all duration-500",
                                 isMainStage ? "w-32 h-32 text-4xl" : "w-20 h-20 md:w-24 md:h-24 text-xl"
                             )}
                         />
                         {/* Only show spinner or error if it's REMOTE and failed/connecting */}
                         {!isLocal && !stream && connectionState !== 'connected' && (
-                            <div className="absolute -bottom-2 -right-2 p-2 bg-indigo-600 rounded-full border-4 border-gray-900">
+                            <div className="absolute -bottom-2 -right-2 p-2 bg-indigo-600 rounded-full border-4 border-white dark:border-gray-900">
                                 <Loader2 className="w-4 h-4 animate-spin text-white" />
                             </div>
                         )}
                         {/* Camera Off Icon for local or remote explicit off */}
                         {(isCameraOff || (isLocal && !stream)) && (
-                            <div className="absolute -bottom-2 -right-2 p-3 bg-gray-950 rounded-full border border-white/10 shadow-xl">
+                            <div className="absolute -bottom-2 -right-2 p-3 bg-gray-100 dark:bg-gray-950 rounded-full border border-gray-200 dark:border-white/10 shadow-xl">
                                 <VideoOff className="w-6 h-6 text-red-500" />
                             </div>
                         )}
@@ -158,7 +158,7 @@ export const VideoCard = ({
             <div className="absolute inset-x-0 bottom-0 p-4 md:p-6 bg-gradient-to-t from-black/90 via-black/40 to-transparent flex items-end justify-between z-20 pointer-events-none">
                 <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
-                        <p className="text-xs md:text-sm font-black text-white uppercase tracking-wider truncate max-w-[12rem] text-shadow-sm">
+                        <p className="text-xs md:text-sm font-black text-white dark:text-white uppercase tracking-wider truncate max-w-[12rem] text-shadow-sm">
                             {participant.name} {isLocal && '(Vous)'}
                         </p>
                         {isHost && (

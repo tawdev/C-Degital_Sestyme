@@ -32,14 +32,14 @@ export const PollsPanel = ({ onClose }: { onClose: () => void }) => {
     }
 
     return (
-        <div className="h-full flex flex-col bg-gray-950/80 backdrop-blur-xl border-l border-white/5 w-80 shadow-2xl">
-            <div className="p-6 border-b border-white/5 flex items-center justify-between">
+        <div className="h-full flex flex-col bg-white dark:bg-gray-950/80 backdrop-blur-xl border-l border-gray-100 dark:border-white/5 w-80 shadow-2xl">
+            <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5 text-indigo-400" />
-                    <h2 className="text-sm font-black uppercase tracking-widest text-white">Sondages</h2>
+                    <BarChart3 className="w-5 h-5 text-indigo-500" />
+                    <h2 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-white">Sondages</h2>
                 </div>
-                <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
-                    <X className="w-4 h-4 text-gray-400" />
+                <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors">
+                    <X className="w-4 h-4 text-gray-400 dark:text-gray-500" />
                 </button>
             </div>
 
@@ -54,25 +54,25 @@ export const PollsPanel = ({ onClose }: { onClose: () => void }) => {
                             className="space-y-4"
                         >
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Question</label>
+                                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">Question</label>
                                 <textarea
                                     value={question}
                                     onChange={(e) => setQuestion(e.target.value)}
                                     placeholder="Posez votre question..."
-                                    className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 min-h-[100px] resize-none"
+                                    className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-2xl p-4 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 min-h-[100px] resize-none"
                                     required
                                 />
                             </div>
 
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Options</label>
+                                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">Options</label>
                                 {options.map((option, index) => (
                                     <div key={index} className="flex gap-2">
                                         <input
                                             value={option}
                                             onChange={(e) => handleOptionChange(index, e.target.value)}
                                             placeholder={`Option ${index + 1}`}
-                                            className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                                            className="flex-1 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                                             required
                                         />
                                         {options.length > 2 && (
@@ -90,7 +90,7 @@ export const PollsPanel = ({ onClose }: { onClose: () => void }) => {
                                     <button
                                         type="button"
                                         onClick={handleAddOption}
-                                        className="w-full py-2 border border-dashed border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest text-gray-500 hover:bg-white/5 transition-all"
+                                        className="w-full py-2 border border-dashed border-gray-200 dark:border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
                                     >
                                         + Ajouter une option
                                     </button>
@@ -101,7 +101,7 @@ export const PollsPanel = ({ onClose }: { onClose: () => void }) => {
                                 <button
                                     type="button"
                                     onClick={() => setIsCreating(false)}
-                                    className="flex-1 py-3 text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-white transition-colors"
+                                    className="flex-1 py-3 text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500 hover:text-slate-900 dark:hover:text-white transition-colors"
                                 >
                                     Annuler
                                 </button>
@@ -118,7 +118,7 @@ export const PollsPanel = ({ onClose }: { onClose: () => void }) => {
                             {isHost && (
                                 <button
                                     onClick={() => setIsCreating(true)}
-                                    className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-white/10 transition-all"
+                                    className="w-full py-4 bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-2xl flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-900 dark:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-all shadow-sm"
                                 >
                                     <Plus className="w-4 h-4" />
                                     Créer un sondage
@@ -127,9 +127,9 @@ export const PollsPanel = ({ onClose }: { onClose: () => void }) => {
 
                             <div className="space-y-4">
                                 {polls.length === 0 ? (
-                                    <div className="py-12 flex flex-col items-center justify-center gap-4 border border-dashed border-white/5 rounded-3xl">
-                                        <BarChart3 className="w-8 h-8 text-gray-700" />
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-600">Aucun sondage</p>
+                                    <div className="py-12 flex flex-col items-center justify-center gap-4 border border-dashed border-gray-100 dark:border-white/5 rounded-3xl bg-gray-50 dark:bg-transparent">
+                                        <BarChart3 className="w-8 h-8 text-gray-300 dark:text-gray-700" />
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-600">Aucun sondage</p>
                                     </div>
                                 ) : (
                                     polls.map((poll) => {
@@ -141,11 +141,11 @@ export const PollsPanel = ({ onClose }: { onClose: () => void }) => {
                                                 key={poll.id}
                                                 initial={{ opacity: 0, scale: 0.95 }}
                                                 animate={{ opacity: 1, scale: 1 }}
-                                                className="bg-white/5 border border-white/5 rounded-3xl overflow-hidden"
+                                                className="bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 rounded-3xl overflow-hidden shadow-sm dark:shadow-none"
                                             >
                                                 <div className="p-5 space-y-4">
                                                     <div className="flex items-start justify-between gap-4">
-                                                        <h3 className="text-xs font-black uppercase tracking-tight text-white leading-relaxed">
+                                                        <h3 className="text-xs font-black uppercase tracking-tight text-slate-900 dark:text-white leading-relaxed">
                                                             {poll.question}
                                                         </h3>
                                                         {!poll.isOpen && (
@@ -164,20 +164,20 @@ export const PollsPanel = ({ onClose }: { onClose: () => void }) => {
                                                                     key={index}
                                                                     disabled={!poll.isOpen || userVote !== undefined}
                                                                     onClick={() => voteInPoll(poll.id, index)}
-                                                                    className={`w-full group relative h-10 rounded-xl overflow-hidden transition-all ${isVoted ? 'bg-indigo-600/20' : 'bg-white/5 hover:bg-white/10'}`}
+                                                                    className={`w-full group relative h-10 rounded-xl overflow-hidden transition-all ${isVoted ? 'bg-indigo-600/20' : 'bg-white dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 border border-gray-100 dark:border-transparent'}`}
                                                                 >
                                                                     {/* Progress Bar */}
                                                                     <motion.div
                                                                         initial={{ width: 0 }}
                                                                         animate={{ width: `${percentage}%` }}
-                                                                        className={`absolute inset-y-0 left-0 ${isVoted ? 'bg-indigo-600/30' : 'bg-white/10'}`}
+                                                                        className={`absolute inset-y-0 left-0 ${isVoted ? 'bg-indigo-600/30' : 'bg-gray-100 dark:bg-white/10'}`}
                                                                     />
 
                                                                     <div className="absolute inset-0 px-4 flex items-center justify-between">
-                                                                        <span className="text-[10px] font-black uppercase tracking-tight text-white/90">{option}</span>
+                                                                        <span className="text-[10px] font-black uppercase tracking-tight text-slate-900 dark:text-white/90">{option}</span>
                                                                         <div className="flex items-center gap-2">
-                                                                            {isVoted && <CheckCircle2 className="w-3 h-3 text-indigo-400" />}
-                                                                            <span className="text-[9px] font-black text-gray-500">{Math.round(percentage)}%</span>
+                                                                            {isVoted && <CheckCircle2 className="w-3.5 h-3.5 text-indigo-500" />}
+                                                                            <span className="text-[9px] font-black text-gray-400 dark:text-gray-500">{Math.round(percentage)}%</span>
                                                                         </div>
                                                                     </div>
                                                                 </button>
@@ -186,7 +186,7 @@ export const PollsPanel = ({ onClose }: { onClose: () => void }) => {
                                                     </div>
 
                                                     <div className="flex items-center justify-between pt-2">
-                                                        <span className="text-[9px] font-black uppercase tracking-widest text-gray-600">
+                                                        <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-600">
                                                             {totalVotes} vote(s)
                                                         </span>
                                                         {isHost && poll.isOpen && (

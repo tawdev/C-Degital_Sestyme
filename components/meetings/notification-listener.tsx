@@ -32,7 +32,10 @@ export default function MeetingNotificationListener({ userId }: { userId: string
         )
 
         // Show UI Popup
-        setCurrentPopup(notification)
+        const dismissedMeetings = JSON.parse(localStorage.getItem('dismissed-notifications') || '{}')
+        if (!dismissedMeetings[notification.meeting_id]) {
+            setCurrentPopup(notification)
+        }
     }, [showNotification, playSound])
 
     useEffect(() => {
@@ -65,14 +68,23 @@ export default function MeetingNotificationListener({ userId }: { userId: string
     async function checkUpcomingMeetings() {
         const unread = await getUnreadNotifications()
         if (unread.length > 0) {
-            // Pick the most recent one to show as a popup if not seen
-            setCurrentPopup(unread[0])
+            const dismissedMeetings = JSON.parse(localStorage.getItem('dismissed-notifications') || '{}')
+            const validNotification = unread.find((n: any) => !dismissedMeetings[n.meeting_id])
+            if (validNotification) {
+                setCurrentPopup(validNotification)
+            }
         }
     }
 
     const closePopup = async () => {
         if (currentPopup) {
             await markNotificationSeen(currentPopup.id)
+
+            // Mark as dismissed in localStorage too to prevent re-popups for this specific meeting
+            const dismissedMeetings = JSON.parse(localStorage.getItem('dismissed-notifications') || '{}')
+            dismissedMeetings[currentPopup.meeting_id] = true
+            localStorage.setItem('dismissed-notifications', JSON.stringify(dismissedMeetings))
+
             setCurrentPopup(null)
         }
     }

@@ -88,9 +88,9 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
     if (isWaiting) return <MeetingLobby />
 
     return (
-        <div className="fixed inset-0 bg-gray-950 flex flex-col overflow-hidden text-white font-sans">
+        <div className="fixed inset-0 bg-gray-50 dark:bg-gray-950 flex flex-col overflow-hidden text-slate-900 dark:text-white font-sans">
             {/* Top Header */}
-            <div className="h-16 px-6 flex items-center justify-between border-b border-white/5 bg-gray-950/50 backdrop-blur-md z-50">
+            <div className="h-16 px-6 flex items-center justify-between border-b border-gray-100 dark:border-white/5 bg-white/50 dark:bg-gray-950/50 backdrop-blur-md z-50">
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
                         <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
@@ -117,7 +117,7 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
                             />
                         ))}
                     </div>
-                    <button className="p-2.5 rounded-xl text-gray-400 hover:text-white transition-all">
+                    <button className="p-2.5 rounded-xl text-gray-400 hover:text-indigo-600 dark:hover:text-white transition-all">
                         <Settings className="w-5 h-5" />
                     </button>
                 </div>
@@ -191,7 +191,7 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
                 </div>
 
                 {/* Host Admission Notification */}
-                {(meeting?.host_id === currentUser?.id || currentUser?.role === 'Administrator') && (joinRequests?.length || 0) > 0 && (
+                {(meeting?.host_id === currentUser?.id || currentUser?.role?.toLowerCase() === 'administrator') && (joinRequests?.length || 0) > 0 && (
                     <motion.div
                         initial={{ opacity: 0, y: -20 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -222,15 +222,15 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
                             initial={{ x: 320 }}
                             animate={{ x: 0 }}
                             exit={{ x: 320 }}
-                            className="w-80 bg-gray-900/50 backdrop-blur-3xl border-l border-white/5 flex flex-col z-40 relative h-full overflow-hidden"
+                            className="w-80 bg-white/80 dark:bg-gray-900/50 backdrop-blur-3xl border-l border-gray-100 dark:border-white/5 flex flex-col z-40 relative h-full overflow-hidden"
                         >
                             {showPolls && <PollsPanel onClose={() => setShowPolls(false)} />}
 
                             {showParticipants && !showPolls && (
                                 <div className="flex-1 flex flex-col">
-                                    <div className="p-6 border-b border-white/5 flex items-center justify-between">
-                                        <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-500">Participants</h3>
-                                        <button onClick={() => setShowParticipants(false)} className="p-2 hover:bg-white/5 rounded-lg"><X className="w-4 h-4" /></button>
+                                    <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
+                                        <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">Participants</h3>
+                                        <button onClick={() => setShowParticipants(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg"><X className="w-4 h-4 text-gray-400" /></button>
                                     </div>
                                     <div className="flex-1 overflow-y-auto p-4 space-y-6">
                                         {/* Lobby / Waiting Room Section (Host or Admin) */}
@@ -276,21 +276,21 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
 
                             {showChat && !showPolls && !showParticipants && (
                                 <div className="flex-1 flex flex-col">
-                                    <div className="p-6 border-b border-white/5 flex items-center justify-between">
-                                        <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-500">Chat</h3>
-                                        <button onClick={() => setShowChat(false)} className="p-2 hover:bg-white/5 rounded-lg"><X className="w-4 h-4" /></button>
+                                    <div className="p-6 border-b border-gray-100 dark:border-white/5 flex items-center justify-between">
+                                        <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">Chat</h3>
+                                        <button onClick={() => setShowChat(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg"><X className="w-4 h-4 text-gray-400" /></button>
                                     </div>
                                     <div className="flex-1 overflow-y-auto p-4 space-y-4">
                                         {messages.map((msg, idx) => (
                                             <div key={idx} className={`flex flex-col ${msg.sender === currentUser.id ? 'items-end' : 'items-start'}`}>
-                                                <div className={`max-w-[85%] p-3 rounded-2xl text-xs ${msg.sender === currentUser.id ? 'bg-indigo-600' : 'bg-white/10'}`}>
+                                                <div className={`max-w-[85%] p-3 rounded-2xl text-xs ${msg.sender === currentUser.id ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-white/10 text-slate-900 dark:text-white'}`}>
                                                     {msg.content}
                                                 </div>
-                                                <span className="text-[8px] text-gray-500 mt-1 uppercase font-bold">{msg.name}</span>
+                                                <span className="text-[8px] text-gray-400 dark:text-gray-500 mt-1 uppercase font-black">{msg.name}</span>
                                             </div>
                                         ))}
                                     </div>
-                                    <div className="p-4 border-t border-white/5">
+                                    <div className="p-4 border-t border-gray-100 dark:border-white/5">
                                         <div className="relative">
                                             <input
                                                 type="text"
@@ -298,9 +298,9 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
                                                 onChange={(e) => setNewMessage(e.target.value)}
                                                 onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                                                 placeholder="Message..."
-                                                className="w-full bg-white/5 border border-white/5 rounded-xl py-3 px-4 pr-12 text-xs outline-none focus:ring-1 focus:ring-indigo-500"
+                                                className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-xl py-3 px-4 pr-12 text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-900 dark:text-white"
                                             />
-                                            <button onClick={handleSendMessage} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-indigo-500"><Send className="w-4 h-4" /></button>
+                                            <button onClick={handleSendMessage} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-indigo-500 hover:scale-110 transition-transform"><Send className="w-4 h-4" /></button>
                                         </div>
                                     </div>
                                 </div>
@@ -311,50 +311,50 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
             </div>
 
             {/* Controls Bar */}
-            <div className="h-24 bg-gray-950/80 backdrop-blur-xl border-t border-white/5 flex items-center justify-center gap-6 px-8 z-50">
-                <div className="flex items-center gap-3 bg-white/5 p-2 rounded-2xl border border-white/5 shadow-2xl">
+            <div className="h-24 bg-white/80 dark:bg-gray-950/80 backdrop-blur-xl border-t border-gray-100 dark:border-white/5 flex items-center justify-center gap-6 px-8 z-50">
+                <div className="flex items-center gap-3 bg-gray-100 dark:bg-white/5 p-2 rounded-2xl border border-gray-200 dark:border-white/5 shadow-2xl shadow-gray-200/50 dark:shadow-none">
                     <button
                         onClick={toggleMute}
-                        className={`p-4 rounded-xl transition-all ${isMuted ? 'bg-red-500 text-white' : 'hover:bg-white/10 text-white'}`}
+                        className={`p-4 rounded-xl transition-all ${isMuted ? 'bg-red-500 text-white' : 'hover:bg-gray-200 dark:hover:bg-white/10 text-gray-600 dark:text-white'}`}
                     >
                         {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
                     </button>
                     <button
                         onClick={toggleCamera}
-                        className={`p-4 rounded-xl transition-all ${isCameraOff ? 'bg-red-500 text-white' : 'hover:bg-white/10 text-white'}`}
+                        className={`p-4 rounded-xl transition-all ${isCameraOff ? 'bg-red-500 text-white' : 'hover:bg-gray-200 dark:hover:bg-white/10 text-gray-600 dark:text-white'}`}
                     >
                         {isCameraOff ? <VideoOff className="w-6 h-6" /> : <Video className="w-6 h-6" />}
                     </button>
                 </div>
 
-                <div className="flex items-center gap-2 md:gap-4 bg-gray-900/50 backdrop-blur-3xl p-2 rounded-[32px] border border-white/5 shadow-2xl">
+                <div className="flex items-center gap-2 md:gap-4 bg-white/50 dark:bg-gray-900/50 backdrop-blur-3xl p-2 rounded-[32px] border border-gray-100 dark:border-white/5 shadow-2xl shadow-gray-200/50 dark:shadow-none">
                     <button
                         onClick={() => { setShowPolls(!showPolls); setShowChat(false); setShowParticipants(false) }}
-                        className={`p-4 rounded-2xl transition-all relative ${showPolls ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                        className={`p-4 rounded-2xl transition-all relative ${showPolls ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-gray-400 hover:text-indigo-600 dark:hover:text-white'}`}
                     >
                         <BarChart3 className="w-6 h-6" />
                         {polls?.filter((p: any) => p.isOpen).length > 0 && (
-                            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-gray-900" />
+                            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-gray-900" />
                         )}
                     </button>
                     <button
                         onClick={() => { setShowChat(!showChat); setShowParticipants(false); setShowPolls(false) }}
-                        className={`p-4 rounded-2xl transition-all ${showChat ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                        className={`p-4 rounded-2xl transition-all ${showChat ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-gray-400 hover:text-indigo-600 dark:hover:text-white'}`}
                     >
                         <MessageSquare className="w-6 h-6" />
                     </button>
                     <button
                         onClick={() => { setShowParticipants(!showParticipants); setShowChat(false); setShowPolls(false) }}
-                        className={`p-4 rounded-2xl transition-all ${showParticipants ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                        className={`p-4 rounded-2xl transition-all ${showParticipants ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-gray-400 hover:text-indigo-600 dark:hover:text-white'}`}
                     >
                         <Users className="w-6 h-6" />
                     </button>
 
-                    <div className="w-px h-8 bg-white/5" />
+                    <div className="w-px h-8 bg-gray-100 dark:bg-white/5" />
 
                     <button
                         onClick={toggleScreenShare}
-                        className={`p-4 rounded-2xl transition-all ${isScreenSharing ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                        className={`p-4 rounded-2xl transition-all ${isScreenSharing ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-gray-400 hover:text-indigo-600 dark:hover:text-white'}`}
                     >
                         <ScreenShare className="w-6 h-6" />
                     </button>
@@ -366,7 +366,7 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: 10 }}
-                                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 p-3 bg-gray-900 border border-white/5 rounded-3xl flex gap-1 shadow-2xl overflow-hidden"
+                                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 p-3 bg-white dark:bg-gray-900 border border-gray-100 dark:border-white/5 rounded-3xl flex gap-1 shadow-2xl overflow-hidden"
                                 >
                                     {['❤️', '👏', '😂', '🔥', '🎉', '😮'].map(emoji => (
                                         <button key={emoji} onClick={() => { sendReaction(emoji); setShowReactions(false) }} className="text-xl p-2 hover:scale-125 transition-transform">{emoji}</button>
@@ -374,14 +374,14 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
                                 </motion.div>
                             )}
                         </AnimatePresence>
-                        <button onClick={() => setShowReactions(!showReactions)} className={`p-4 rounded-2xl transition-all ${showReactions ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+                        <button onClick={() => setShowReactions(!showReactions)} className={`p-4 rounded-2xl transition-all ${showReactions ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-gray-400 hover:text-indigo-600 dark:hover:text-white'}`}>
                             <Smile className="w-6 h-6" />
                         </button>
                     </div>
 
                     <button
                         onClick={toggleRaiseHand}
-                        className={`p-4 rounded-2xl transition-all ${handsRaised.has(currentUser.id) ? 'bg-amber-500 text-white' : 'text-gray-400 hover:text-white'}`}
+                        className={`p-4 rounded-2xl transition-all ${handsRaised.has(currentUser.id) ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20' : 'text-gray-400 hover:text-indigo-600 dark:hover:text-white'}`}
                     >
                         <Hand className="w-6 h-6" />
                     </button>

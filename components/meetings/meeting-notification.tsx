@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { getMeetings } from '@/app/(main)/chat/actions'
 import { Video, X, Clock, ArrowRight, Play } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { format, differenceInSeconds, addMinutes, isBefore, isAfter } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { useAudio } from '@/context/audio-context'
@@ -14,6 +15,7 @@ export default function MeetingNotification() {
     const pathname = usePathname()
     const [nextMeeting, setNextMeeting] = useState<any>(null)
     const [isVisible, setIsVisible] = useState(false)
+    const [isDismissed, setIsDismissed] = useState(false)
     const [timeRemaining, setTimeRemaining] = useState<number>(0)
     const [isLive, setIsLive] = useState(false)
     const [audioAllowed, setAudioAllowed] = useState(false) // For potential sound alert
@@ -104,6 +106,15 @@ export default function MeetingNotification() {
                 .sort((a: any, b: any) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())[0]
 
             if (relevantMeeting) {
+                // Check if dismissed in localStorage
+                const dismissedMeetings = JSON.parse(localStorage.getItem('dismissed-notifications') || '{}')
+                if (dismissedMeetings[relevantMeeting.id]) {
+                    setIsVisible(false)
+                    setIsDismissed(true)
+                } else {
+                    setIsDismissed(false)
+                }
+
                 // Only update if it's a different meeting to avoid resetting state unnecessarily
                 setNextMeeting((prev: any) => {
                     // Update if ID changed OR if key data changed (status, time)
@@ -179,11 +190,15 @@ export default function MeetingNotification() {
 
     const handleDismiss = () => {
         setIsVisible(false)
-        // Optionally store "dismissed" state for this meeting ID in sessionStorage so we don't show it again until status changes?
-        // For now, simple dismiss until next refresh/update is fine.
+        setIsDismissed(true)
+        if (nextMeeting?.id) {
+            const dismissedMeetings = JSON.parse(localStorage.getItem('dismissed-notifications') || '{}')
+            dismissedMeetings[nextMeeting.id] = true
+            localStorage.setItem('dismissed-notifications', JSON.stringify(dismissedMeetings))
+        }
     }
 
-    if (!isVisible || !nextMeeting) return null
+    if (!isVisible || !nextMeeting || isDismissed) return null
 
     // Formatting for display
     const formatTime = (seconds: number) => {
@@ -194,72 +209,104 @@ export default function MeetingNotification() {
     }
 
     return (
-        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-10 fade-in duration-500">
-            <div className={`
-                relative overflow-hidden rounded-2xl shadow-2xl border backdrop-blur-xl transition-all w-80 md:w-96
-                ${isLive
-                    ? 'bg-white/90 border-indigo-200 shadow-indigo-500/20'
-                    : 'bg-white/90 border-gray-200'}
-            `}>
-                {/* Visual Header / Progress Bar */}
-                <div className={`h-1.5 w-full ${isLive ? 'bg-indigo-100' : 'bg-gray-100'}`}>
-                    <div className={`h-full transition-all duration-1000 ease-linear ${isLive ? 'bg-indigo-600 w-full animate-pulse' : 'bg-gray-400'}`}
-                        style={{ width: isLive ? '100%' : '100%' /* We could animate width based on time remaining */ }}
-                    />
-                </div>
+        <div className="fixed bottom-6 right-6 z-50">
+            <motion.div
+                initial={{ opacity: 0, y: 50, scale: 0.9 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 50, scale: 0.9 }}
+                className={`
+                    relative overflow-hidden rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.2)] border backdrop-blur-2xl transition-all w-[340px] md:w-[380px]
+                    ${isLive
+                        ? 'bg-white/80 dark:bg-gray-900/80 border-indigo-500/30'
+                        : 'bg-white/80 dark:bg-gray-900/80 border-gray-200 dark:border-white/10'}
+                `}
+            >
+                {/* Modern Header Gradient */}
+                <div className={`h-1.5 w-full ${isLive ? 'bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 animate-gradient-x' : 'bg-gray-100 dark:bg-white/10'}`} />
 
-                <div className="p-5">
-                    <div className="flex justify-between items-start mb-3">
-                        <div className="flex items-center gap-2">
-                            {isLive ? (
-                                <span className="flex h-2.5 w-2.5 relative">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                <div className="p-6">
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center gap-3">
+                            <div className={`p-2.5 rounded-2xl ${isLive ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-gray-100 dark:bg-white/5 text-gray-400'}`}>
+                                <Video className="w-5 h-5" />
+                            </div>
+                            <div className="flex flex-col">
+                                <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${isLive ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                                    {isLive ? 'Meeting en direct' : 'Prochain Meeting'}
                                 </span>
-                            ) : (
-                                <Clock className="w-4 h-4 text-gray-400" />
-                            )}
-                            <span className={`text-[10px] font-black uppercase tracking-widest ${isLive ? 'text-red-600' : 'text-gray-500'}`}>
-                                {isLive ? 'Réunion en cours' : 'Commence bientôt'}
-                            </span>
+                                {isLive && (
+                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                        <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+                                        <span className="text-[9px] font-bold text-red-500 uppercase tracking-widest">Live Now</span>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                        <button onClick={handleDismiss} className="text-gray-400 hover:text-gray-600 transition-colors">
+                        <button
+                            onClick={handleDismiss}
+                            className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl text-gray-400 hover:text-gray-900 dark:hover:text-white transition-all active:scale-90"
+                        >
                             <X className="w-4 h-4" />
                         </button>
                     </div>
 
-                    <h3 className="font-bold text-gray-900 mb-1 line-clamp-1">{nextMeeting.title}</h3>
-                    <p className="text-xs text-gray-500 mb-4 line-clamp-1">
-                        Organisé par {nextMeeting.host?.full_name || 'Inconnu'}
-                    </p>
+                    <h3 className="font-black text-gray-900 dark:text-white text-lg mb-1 leading-tight tracking-tight line-clamp-2">
+                        {nextMeeting.title}
+                    </h3>
+                    <div className="flex items-center gap-2 mb-6">
+                        <div className="w-5 h-5 bg-gray-100 dark:bg-white/5 rounded-full flex items-center justify-center overflow-hidden border border-white/10">
+                            {nextMeeting.host?.avatar_url ? (
+                                <img src={nextMeeting.host.avatar_url} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                                <span className="text-[8px] font-black text-gray-400">{nextMeeting.host?.full_name?.charAt(0)}</span>
+                            )}
+                        </div>
+                        <p className="text-[11px] font-bold text-gray-500 dark:text-gray-400">
+                            Proposé par <span className="text-indigo-600 dark:text-indigo-400">{nextMeeting.host?.full_name || 'Inconnu'}</span>
+                        </p>
+                    </div>
 
                     {!isLive ? (
-                        <div className="flex items-center justify-between bg-gray-50 rounded-xl p-3 mb-2">
-                            <span className="text-xs font-semibold text-gray-500">Temps restant</span>
-                            <span className="font-mono text-xl font-black text-gray-900 tabular-nums">
-                                {formatTime(timeRemaining)}
-                            </span>
+                        <div className="flex items-center justify-between bg-gray-50 dark:bg-white/5 rounded-[1.25rem] p-4 border border-gray-100 dark:border-white/5 mb-2">
+                            <div className="flex flex-col">
+                                <span className="text-[9px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">Démarrage dans</span>
+                                <span className="font-mono text-2xl font-black text-gray-900 dark:text-white tabular-nums tracking-tighter">
+                                    {formatTime(timeRemaining)}
+                                </span>
+                            </div>
+                            <Clock className="w-6 h-6 text-gray-200 dark:text-white/10" />
                         </div>
-                    ) : null}
+                    ) : (
+                        <div className="flex items-center justify-between bg-indigo-50 dark:bg-indigo-500/10 rounded-[1.25rem] p-4 border border-indigo-100 dark:border-indigo-500/20 mb-2">
+                            <div className="flex flex-col">
+                                <span className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-1">Durée prévue</span>
+                                <span className="text-sm font-black text-indigo-900 dark:text-white">
+                                    {nextMeeting.duration || 60} minutes
+                                </span>
+                            </div>
+                            <Play className="w-5 h-5 text-indigo-500 animate-pulse" />
+                        </div>
+                    )}
 
-                    <div className="mt-4 flex gap-2">
+                    <div className="mt-6">
                         {isLive ? (
                             <button
                                 onClick={handleJoin}
-                                className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all shadow-lg shadow-indigo-200 active:scale-95 group"
+                                className="w-full flex items-center justify-center gap-3 bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all shadow-xl shadow-indigo-500/25 active:scale-[0.98] group"
                             >
                                 <Video className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                                Rejoindre maintenant
+                                Rejoindre le Salon
+                                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                             </button>
                         ) : (
-                            <button disabled className="flex-1 flex items-center justify-center gap-2 bg-gray-100 text-gray-400 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide cursor-not-allowed">
+                            <div className="w-full flex items-center justify-center gap-2 bg-gray-100 dark:bg-white/5 text-gray-400 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] opacity-60">
                                 <Clock className="w-4 h-4" />
-                                Bientôt disponible
-                            </button>
+                                Salle en attente
+                            </div>
                         )}
                     </div>
                 </div>
-            </div>
+            </motion.div>
         </div>
     )
 }
