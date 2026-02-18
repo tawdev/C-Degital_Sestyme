@@ -152,6 +152,25 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => { isCameraOffRef.current = isCameraOff }, [isCameraOff])
     useEffect(() => { isRecordingRef.current = isRecording }, [isRecording])
 
+    // Synchronize local tracks with all peer connections
+    useEffect(() => {
+        if (!localStream) return
+
+        peerConnections.current.forEach((pc, userId) => {
+            const senders = pc.getSenders()
+            localStream.getTracks().forEach(track => {
+                const existingSender = senders.find(s => s.track?.kind === track.kind)
+                if (existingSender) {
+                    if (existingSender.track !== track) {
+                        existingSender.replaceTrack(track)
+                    }
+                } else {
+                    pc.addTrack(track, localStream)
+                }
+            })
+        })
+    }, [localStream])
+
     const startLocalStream = async () => {
         try {
             if (localStreamRef.current) return localStreamRef.current
@@ -257,48 +276,66 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     }
 
     const createPeerConnection = (targetId: string, currentUserId: string) => {
+        if (peerConnections.current.has(targetId)) return peerConnections.current.get(targetId)!
+
         const pc = new RTCPeerConnection({
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' }
             ]
         })
+
         pc.onicecandidate = (e) => {
-            if (e.candidate) sendSignal(targetId, { type: 'candidate', candidate: e.candidate }, currentUserId)
+            if (e.candidate) {
+                sendSignal(targetId, { type: 'candidate', candidate: e.candidate }, currentUserId)
+            }
         }
+
         pc.ontrack = (e) => {
             if (e.streams && e.streams[0]) {
                 const stream = e.streams[0]
                 const streamId = stream.id
 
-                // We need to know if this is a screen stream or camera stream
-                // We'll rely on the 'screen-sharing' broadcast signal to distinguish
-                // But for now, we'll check if we already have a stream for this user
                 setRemoteStreams(prev => {
-                    if (prev.has(targetId) && prev.get(targetId)?.id !== streamId) {
-                        // If we already have a camera stream, this might be the screen
-                        setRemoteScreenStreams(s => new Map(s).set(targetId, stream))
+                    const next = new Map(prev)
+                    // If we already have a stream and it's different, it might be screen share
+                    if (next.has(targetId) && next.get(targetId)?.id !== streamId) {
+                        setRemoteScreenStreams(prevScreen => new Map(prevScreen).set(targetId, stream))
                         return prev
                     }
-                    const next = new Map(prev)
                     next.set(targetId, stream)
                     return next
                 })
+
+                // Ensure we handle track removal/updates
+                stream.onremovetrack = () => {
+                    if (stream.getTracks().length === 0) {
+                        setRemoteStreams(prev => {
+                            const next = new Map(prev)
+                            next.delete(targetId)
+                            return next
+                        })
+                    }
+                }
             }
         }
+
         pc.onconnectionstatechange = () => {
             setConnectionStates(prev => {
                 const next = new Map(prev)
                 next.set(targetId, pc.connectionState)
                 return next
             })
+            if (pc.connectionState === 'failed') {
+                pc.restartIce()
+            }
         }
+
         pc.onnegotiationneeded = async () => {
             try {
                 makingOffer.current.set(targetId, true)
-                const offer = await pc.createOffer()
-                if (pc.signalingState !== 'stable') return // Avoid creating offer if not stable
-                await pc.setLocalDescription(offer)
+                await pc.setLocalDescription() // Modern WebRTC automatically creates and sets offer
                 sendSignal(targetId, { type: 'offer', sdp: pc.localDescription }, currentUserId)
             } catch (err) {
                 console.error('[CallProvider] Negotiation error:', err)
@@ -306,23 +343,21 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
                 makingOffer.current.set(targetId, false)
             }
         }
+
+        // Add initial tracks if stream exists
         if (localStreamRef.current) {
-            localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current!))
+            localStreamRef.current.getTracks().forEach(track => {
+                pc.addTrack(track, localStreamRef.current!)
+            })
         }
+
         peerConnections.current.set(targetId, pc)
         return pc
     }
 
-    const initiateConnection = async (targetId: string, currentUserId: string) => {
-        if (!localStreamRef.current) {
-            setTimeout(() => initiateConnection(targetId, currentUserId), 1000)
-            return
-        }
-        const pc = createPeerConnection(targetId, currentUserId)
-        // No explicit offer creation here, it's handled by onnegotiationneeded
-        // However, we might want to send an initial 'initiate' signal to prompt the other side to create a PC
-        // if they haven't yet, and then they will trigger negotiationneeded.
-        // For Perfect Negotiation, the polite side (currentUserId < targetId) initiates.
+    const initiateConnection = (targetId: string, currentUserId: string) => {
+        // Just create the PC, negotiationneeded will take care of the rest if polite
+        createPeerConnection(targetId, currentUserId)
         if (currentUserId < targetId) {
             sendSignal(targetId, { type: 'initiate' }, currentUserId)
         }
@@ -340,34 +375,26 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
         try {
             if (type === 'offer' || type === 'initiate') {
-                // Ignore 'initiate' if it's not an offer, it's just to ensure PC exists
                 if (type === 'initiate') return
 
                 const offerCollision = makingOffer.current.get(from) || pc.signalingState !== 'stable'
-
                 const ignoreOffer = !isPolite && offerCollision
+
                 if (ignoreOffer) {
-                    console.log('[CallProvider] Ignoring offer (impolite side collision)')
+                    console.log('[CallProvider] Ignoring offer (collision on impolite side)')
                     return
                 }
 
                 isSettingRemoteDescription.current.set(from, true)
-                if (offerCollision) {
-                    console.log('[CallProvider] Rolling back for incoming offer (polite side)')
-                    await Promise.all([
-                        pc.setLocalDescription({ type: 'rollback' }),
-                        pc.setRemoteDescription(new RTCSessionDescription(sdp))
-                    ])
-                } else {
-                    await pc.setRemoteDescription(new RTCSessionDescription(sdp))
-                }
+                await pc.setRemoteDescription(new RTCSessionDescription(sdp))
                 isSettingRemoteDescription.current.delete(from)
 
-                const answer = await pc.createAnswer()
-                await pc.setLocalDescription(answer)
-                sendSignal(from, { type: 'answer', sdp: pc.localDescription }, currentUserId)
+                if (type === 'offer') {
+                    await pc.setLocalDescription()
+                    sendSignal(from, { type: 'answer', sdp: pc.localDescription }, currentUserId)
+                }
 
-                // Flash pending candidates
+                // Flush pending candidates
                 const buffered = pendingCandidates.current.get(from) || []
                 for (const cand of buffered) {
                     await pc.addIceCandidate(new RTCIceCandidate(cand))
@@ -375,11 +402,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
                 pendingCandidates.current.delete(from)
 
             } else if (type === 'answer') {
-                if (pc.signalingState === 'have-local-offer' || pc.signalingState === 'have-remote-pranswer') {
-                    isSettingRemoteDescription.current.set(from, true)
-                    await pc.setRemoteDescription(new RTCSessionDescription(sdp))
-                    isSettingRemoteDescription.current.delete(from)
-                }
+                await pc.setRemoteDescription(new RTCSessionDescription(sdp))
             } else if (type === 'candidate') {
                 if (!candidate) return
                 try {
