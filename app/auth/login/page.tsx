@@ -39,7 +39,7 @@ export default function LoginPage() {
                 delayChildren: 0.3
             }
         }
-    }
+    } as const
 
     const itemVariants = {
         hidden: { y: 20, opacity: 0 },
@@ -51,7 +51,7 @@ export default function LoginPage() {
                 stiffness: 100
             }
         }
-    }
+    } as const
 
     return (
         <div className="min-h-screen flex items-center justify-center p-6 bg-gray-50 dark:bg-[#0a0515] relative overflow-hidden transition-colors duration-500">
