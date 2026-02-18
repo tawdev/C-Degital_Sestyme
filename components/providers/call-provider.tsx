@@ -16,6 +16,7 @@ interface ParticipantState {
     isMuted: boolean
     isCameraOff: boolean
     isRecording: boolean
+    isScreenSharing: boolean
 }
 
 interface Poll {
@@ -398,23 +399,6 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
                 }
             } else if (type === 'leave') {
                 handleParticipantLeave(from)
-            } else if (type === 'screen-sharing') {
-                setParticipantStates(prev => {
-                    const newMap = new Map(prev)
-                    const current = newMap.get(from) || { isMuted: false, isCameraOff: false, isRecording: false, isScreenSharing: false }
-                    newMap.set(from, { ...current, isScreenSharing: payload.active })
-                    return newMap
-                })
-                if (payload.active) {
-                    setSharingUser(from)
-                } else {
-                    setSharingUser(null)
-                    setRemoteScreenStreams(prev => {
-                        const next = new Map(prev)
-                        next.delete(from)
-                        return next
-                    })
-                }
             }
         } catch (err) {
             console.error('[CallProvider] Signaling error:', err, 'Type:', type)
@@ -460,10 +444,36 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
             .on('broadcast', { event: 'media-state' }, ({ payload }: { payload: any }) => {
                 setParticipantStates(prev => {
                     const next = new Map(prev)
-                    const current = next.get(payload.from) || { isMuted: false, isCameraOff: false, isRecording: false }
+                    const current = next.get(payload.from) || { isMuted: false, isCameraOff: false, isRecording: false, isScreenSharing: false }
                     next.set(payload.from, { ...current, isMuted: payload.isMuted, isCameraOff: payload.isCameraOff })
                     return next
                 })
+            })
+            .on('broadcast', { event: 'recording-state' }, ({ payload }: { payload: any }) => {
+                setParticipantStates(prev => {
+                    const next = new Map(prev)
+                    const current = next.get(payload.from) || { isMuted: false, isCameraOff: false, isRecording: false, isScreenSharing: false }
+                    next.set(payload.from, { ...current, isRecording: payload.isRecording })
+                    return next
+                })
+            })
+            .on('broadcast', { event: 'screen-sharing' }, ({ payload }: { payload: any }) => {
+                setParticipantStates(prev => {
+                    const next = new Map(prev)
+                    const current = next.get(payload.from) || { isMuted: false, isCameraOff: false, isRecording: false, isScreenSharing: false }
+                    next.set(payload.from, { ...current, isScreenSharing: payload.active })
+                    return next
+                })
+                if (payload.active) {
+                    setSharingUser(payload.from)
+                } else {
+                    setSharingUser(null)
+                    setRemoteScreenStreams(prev => {
+                        const next = new Map(prev)
+                        next.delete(payload.from)
+                        return next
+                    })
+                }
             })
             .on('broadcast', { event: 'reaction' }, ({ payload }: { payload: any }) => {
                 window.dispatchEvent(new CustomEvent('meeting-reaction', { detail: { userId: payload.from, emoji: payload.emoji } }))

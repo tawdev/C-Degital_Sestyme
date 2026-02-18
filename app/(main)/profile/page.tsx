@@ -62,9 +62,9 @@ export default async function ProfilePage() {
 
             {/* Profile Info Cards with Glassmorphism */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white/70 dark:bg-white/5 backdrop-blur-2xl rounded-[2rem] border border-gray-200 dark:border-white/10 p-6 shadow-xl shadow-indigo-900/5 hover:shadow-2xl transition-all group">
+                <div className="glass rounded-[2rem] p-6 group hover:-translate-y-1 transition-all duration-300">
                     <div className="flex items-center gap-4">
-                        <div className="bg-indigo-50 dark:bg-indigo-400/10 p-4 rounded-2xl group-hover:scale-110 transition-transform">
+                        <div className="bg-indigo-50 dark:bg-indigo-400/10 p-4 rounded-2xl group-hover:scale-110 transition-transform duration-500">
                             <Mail className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />
                         </div>
                         <div>
@@ -74,9 +74,9 @@ export default async function ProfilePage() {
                     </div>
                 </div>
 
-                <div className="bg-white/70 dark:bg-white/5 backdrop-blur-2xl rounded-[2rem] border border-gray-200 dark:border-white/10 p-6 shadow-xl shadow-indigo-900/5 hover:shadow-2xl transition-all group">
+                <div className="glass rounded-[2rem] p-6 group hover:-translate-y-1 transition-all duration-300">
                     <div className="flex items-center gap-4">
-                        <div className="bg-emerald-50 dark:bg-emerald-400/10 p-4 rounded-2xl group-hover:scale-110 transition-transform">
+                        <div className="bg-emerald-50 dark:bg-emerald-400/10 p-4 rounded-2xl group-hover:scale-110 transition-transform duration-500">
                             <Phone className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
                         </div>
                         <div>
@@ -86,9 +86,9 @@ export default async function ProfilePage() {
                     </div>
                 </div>
 
-                <div className="bg-white/70 dark:bg-white/5 backdrop-blur-2xl rounded-[2rem] border border-gray-200 dark:border-white/10 p-6 shadow-xl shadow-indigo-900/5 hover:shadow-2xl transition-all group">
+                <div className="glass rounded-[2rem] p-6 group hover:-translate-y-1 transition-all duration-300">
                     <div className="flex items-center gap-4">
-                        <div className="bg-purple-50 dark:bg-purple-400/10 p-4 rounded-2xl group-hover:scale-110 transition-transform">
+                        <div className="bg-purple-50 dark:bg-purple-400/10 p-4 rounded-2xl group-hover:scale-110 transition-transform duration-500">
                             <Calendar className="h-6 w-6 text-purple-600 dark:text-purple-400" />
                         </div>
                         <div>
