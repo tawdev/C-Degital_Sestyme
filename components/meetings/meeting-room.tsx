@@ -70,6 +70,13 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
     const [showReactions, setShowReactions] = useState(false)
 
     useEffect(() => {
+        console.log('[MeetingRoom] Current User Role:', currentUser?.role)
+        console.log('[MeetingRoom] Meeting Host ID:', meeting?.host_id)
+        console.log('[MeetingRoom] Current User ID:', currentUser?.id)
+        console.log('[MeetingRoom] Join Requests Count:', joinRequests?.length)
+    }, [currentUser, meeting, joinRequests])
+
+    useEffect(() => {
         joinMeeting(meetingId, meeting, currentUser)
     }, [meetingId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -137,7 +144,7 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
                             >
                                 <VideoCard
                                     participant={participants.find(p => p.id === sharingUser) || (sharingUser === currentUser?.id ? { ...currentUser, name: currentUser?.full_name, avatar: currentUser?.avatar_url } : { id: sharingUser, name: 'Partageur', avatar: null })}
-                                    stream={sharingUser === currentUser?.id ? screenStream : remoteScreenStreams?.get(sharingUser) || null}
+                                    stream={sharingUser === currentUser?.id ? screenStream : (remoteScreenStreams?.get(sharingUser) || remoteStreams?.get(sharingUser) || null)}
                                     isLocal={sharingUser === currentUser?.id}
                                     isMuted={false}
                                     isCameraOff={false}
@@ -345,10 +352,28 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
                     </button>
                     <button
                         onClick={() => { setShowParticipants(!showParticipants); setShowChat(false); setShowPolls(false) }}
-                        className={`p-4 rounded-2xl transition-all ${showParticipants ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-gray-400 hover:text-indigo-600 dark:hover:text-white'}`}
+                        className={`p-4 rounded-2xl transition-all relative ${showParticipants ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-gray-400 hover:text-indigo-600 dark:hover:text-white'}`}
                     >
                         <Users className="w-6 h-6" />
+                        {joinRequests?.length > 0 && (
+                            <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-[10px] font-black border-2 border-white dark:border-gray-900 animate-in zoom-in duration-300">
+                                {joinRequests.length}
+                            </span>
+                        )}
                     </button>
+
+                    {(meeting?.host_id === currentUser?.id ||
+                        currentUser?.role?.toLowerCase() === 'administrator' ||
+                        currentUser?.role?.toLowerCase() === 'admin') &&
+                        joinRequests?.length > 0 && (
+                            <button
+                                onClick={() => { setShowParticipants(true); setShowChat(false); setShowPolls(false) }}
+                                className="p-4 rounded-2xl transition-all relative bg-amber-500 text-white shadow-lg shadow-amber-500/20 animate-pulse flex items-center gap-2"
+                            >
+                                <Clock className="w-6 h-6" />
+                                <span className="text-[10px] font-black uppercase tracking-widest hidden lg:inline">En attente ({joinRequests.length})</span>
+                            </button>
+                        )}
 
                     <div className="w-px h-8 bg-gray-100 dark:bg-white/5" />
 

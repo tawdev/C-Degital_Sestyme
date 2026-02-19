@@ -37,7 +37,7 @@ export default function ResponsiveChatLayout({
                 <div className="p-8 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/5">
                     {sidebarHeader}
                 </div>
-                <div className="flex-1 overflow-hidden">
+                <div className="flex-1 overflow-hidden flex flex-col">
                     <ChatSidebar {...sidebarProps} />
                 </div>
             </div>

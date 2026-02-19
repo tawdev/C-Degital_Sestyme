@@ -132,9 +132,16 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     const isWaitingRef = useRef(false)
     const audioContextRef = useRef<AudioContext | null>(null)
     const analysersRef = useRef<Map<string, AnalyserNode>>(new Map())
-    const volumeIntervalRef = useRef<NodeJS.Timeout | null>(null)
     const statsIntervalRef = useRef<NodeJS.Timeout | null>(null)
     const recordingDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null)
+
+    // Refs for state that need to be accessed in closures without stale values
+    const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map())
+    const remoteScreenStreamsRef = useRef<Map<string, MediaStream>>(new Map())
+    const sharingStreamIdsRef = useRef<Map<string, string>>(new Map())
+
+    useEffect(() => { remoteStreamsRef.current = remoteStreams }, [remoteStreams])
+    useEffect(() => { remoteScreenStreamsRef.current = remoteScreenStreams }, [remoteScreenStreams])
 
     const supabase = createClient()
     const router = useRouter()
@@ -267,7 +274,16 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
             data.isMuted = isMutedRef.current
             data.isCameraOff = isCameraOffRef.current
         }
+
+        // Ensure role is sent with lobby/admission signals
+        if (data.type === 'lobby' || data.type === 'admit') {
+            data.role = currentUser?.role
+        }
+
         const isSpecialEvent = ['media-state', 'recording-state', 'request-state', 'command', 'hand-raised', 'reaction', 'lobby', 'poll', 'chat', 'screen-sharing'].includes(data.type)
+
+        console.log(`[CallProvider] Sending ${isSpecialEvent ? data.type : 'signal'} to ${to}`, data)
+
         await channelRef.current.send({
             type: 'broadcast',
             event: isSpecialEvent ? data.type : 'signal',
@@ -293,30 +309,46 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         }
 
         pc.ontrack = (e) => {
-            if (e.streams && e.streams[0]) {
-                const stream = e.streams[0]
-                const streamId = stream.id
+            console.log(`[CallProvider] Track received from ${targetId}:`, e.track.kind, 'Stream ID:', e.streams?.[0]?.id)
+            const stream = e.streams[0]
+            const sharingId = sharingStreamIdsRef.current.get(targetId)
 
-                setRemoteStreams(prev => {
-                    const next = new Map(prev)
-                    // If we already have a stream and it's different, it might be screen share
-                    if (next.has(targetId) && next.get(targetId)?.id !== streamId) {
-                        setRemoteScreenStreams(prevScreen => new Map(prevScreen).set(targetId, stream))
-                        return prev
-                    }
-                    next.set(targetId, stream)
-                    return next
-                })
+            // Logic to determine where to put the stream
+            setRemoteStreams(prev => {
+                const next = new Map(prev)
+                const existing = next.get(targetId)
 
-                // Ensure we handle track removal/updates
-                stream.onremovetrack = () => {
-                    if (stream.getTracks().length === 0) {
-                        setRemoteStreams(prev => {
-                            const next = new Map(prev)
-                            next.delete(targetId)
-                            return next
-                        })
-                    }
+                // If this is explicitly known as the screen share stream
+                if (sharingId && stream.id === sharingId) {
+                    console.log(`[CallProvider] Matched explicit screen share stream ID for ${targetId}:`, stream.id)
+                    setRemoteScreenStreams(prevScreen => new Map(prevScreen).set(targetId, stream))
+                    return prev
+                }
+
+                // If we have an existing stream and this is a different one, it's a secondary stream (likely screen)
+                if (existing && existing.id !== stream.id) {
+                    console.log(`[CallProvider] Detected secondary stream for ${targetId} (likely screen share):`, stream.id)
+                    setRemoteScreenStreams(prevScreen => new Map(prevScreen).set(targetId, stream))
+                    return prev
+                }
+
+                // Primary stream (or first one to arrive)
+                next.set(targetId, stream)
+                return next
+            })
+
+            stream.onremovetrack = () => {
+                if (stream.getTracks().length === 0) {
+                    setRemoteStreams(prev => {
+                        const next = new Map(prev)
+                        if (next.get(targetId)?.id === stream.id) next.delete(targetId)
+                        return next
+                    })
+                    setRemoteScreenStreams(prev => {
+                        const next = new Map(prev)
+                        if (next.get(targetId)?.id === stream.id) next.delete(targetId)
+                        return next
+                    })
                 }
             }
         }
@@ -344,10 +376,15 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
             }
         }
 
-        // Add initial tracks if stream exists
+        // Add all available local tracks
         if (localStreamRef.current) {
             localStreamRef.current.getTracks().forEach(track => {
                 pc.addTrack(track, localStreamRef.current!)
+            })
+        }
+        if (screenStreamRef.current) {
+            screenStreamRef.current.getTracks().forEach(track => {
+                pc.addTrack(track, screenStreamRef.current!)
             })
         }
 
@@ -429,9 +466,13 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     }
 
     const joinMeeting = async (mid: string, mData: any, user: any) => {
-        if (isInCall && meetingId === mid) return
+        if (isInCall && meetingId === mid) {
+            console.log('[CallProvider] Already in this meeting, skipping join.')
+            return
+        }
         if (isInCall) await leaveMeeting()
 
+        console.log('[CallProvider] Joining meeting:', mid)
         setMeetingId(mid)
         setCurrentUser(user)
         setMeeting(mData)
@@ -487,10 +528,22 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
                     next.set(payload.from, { ...current, isScreenSharing: payload.active })
                     return next
                 })
+
                 if (payload.active) {
                     setSharingUser(payload.from)
+                    if (payload.streamId) {
+                        sharingStreamIdsRef.current.set(payload.from, payload.streamId)
+                    }
+
+                    // Proactively check if the stream already exists in remoteStreams but was miscategorized
+                    const currentPrimary = remoteStreamsRef.current.get(payload.from)
+                    if (currentPrimary && (payload.streamId ? currentPrimary.id === payload.streamId : true)) {
+                        console.log(`[CallProvider] Screen share signal received, moving stream to remoteScreenStreams for ${payload.from}`)
+                        setRemoteScreenStreams(prev => new Map(prev).set(payload.from, currentPrimary))
+                    }
                 } else {
                     setSharingUser(null)
+                    sharingStreamIdsRef.current.delete(payload.from)
                     setRemoteScreenStreams(prev => {
                         const next = new Map(prev)
                         next.delete(payload.from)
@@ -512,21 +565,35 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
             .on('broadcast', { event: 'lobby' }, ({ payload }: { payload: any }) => {
                 const isAdmin = user.role?.toLowerCase() === 'administrator'
                 const isHost = mData.host_id === user.id || isAdmin
-                console.log('[CallProvider] Lobby signal received:', payload.actionType, 'isHost:', isHost, 'payloadFrom:', payload.from)
+
+                console.log('[CallProvider] Lobby signal received:', payload.actionType, {
+                    isHost,
+                    isAdmin,
+                    from: payload.from,
+                    to: payload.to
+                })
 
                 if (payload.actionType === 'request' && isHost) {
+                    console.log('[CallProvider] Adding join request from:', payload.from)
                     setJoinRequests(prev => {
                         if (prev.find(r => r.id === payload.from)) return prev
                         return [...prev, { ...payload.user, id: payload.from }]
                     })
-                } else if (payload.actionType === 'admit' && (payload.from === mData.host_id || payload.role?.toLowerCase() === 'administrator')) {
-                    setIsWaiting(false)
-                    isWaitingRef.current = false
-                    if (lobbyIntervalRef.current) {
-                        clearInterval(lobbyIntervalRef.current)
-                        lobbyIntervalRef.current = null
+                } else if (payload.actionType === 'admit') {
+                    const isAuthorized = payload.from === mData.host_id || payload.role?.toLowerCase() === 'administrator'
+                    const isForMe = payload.to === user.id || payload.to === 'everyone'
+
+                    if (isAuthorized && isForMe) {
+                        if (isInCall) return // Already admitted
+                        console.log('[CallProvider] Admitted by:', payload.from)
+                        setIsWaiting(false)
+                        isWaitingRef.current = false
+                        if (lobbyIntervalRef.current) {
+                            clearInterval(lobbyIntervalRef.current)
+                            lobbyIntervalRef.current = null
+                        }
+                        setIsInCall(true)
                     }
-                    setIsInCall(true)
                 }
             })
             .on('broadcast', { event: 'poll' }, ({ payload }: { payload: any }) => {
@@ -574,6 +641,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
             })
             .subscribe(async (status: string) => {
                 if (status === 'SUBSCRIBED') {
+                    console.log('[CallProvider] Subscribed to meeting channel:', mid)
                     await channel.track({
                         user: { id: user.id, name: user.full_name, avatar: user.avatar_url },
                         online_at: new Date().toISOString()
@@ -704,62 +772,101 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         router.push('/chat')
     }
 
-    // Unimplemented placeholders for the context type compatibility
     const toggleScreenShare = async () => {
         if (!isScreenSharing) {
             try {
-                const stream = await navigator.mediaDevices.getDisplayMedia({ video: true })
+                const stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: {
+                        cursor: "always"
+                    } as any,
+                    audio: false
+                })
+
+                const screenTrack = stream.getVideoTracks()[0]
+                if (!screenTrack) return
+
                 screenStreamRef.current = stream
                 setScreenStream(stream)
                 setIsScreenSharing(true)
-                setSharingUser(currentUser.id)
+                setSharingUser(currentUser?.id || null)
 
-                // Add screen tracks to all existing peer connections
-                stream.getTracks().forEach(track => {
-                    track.onended = () => {
-                        stopScreenShare()
+                // Replace the video track for all participants
+                peerConnections.current.forEach(async (pc) => {
+                    const sender = pc.getSenders().find(s => s.track?.kind === 'video')
+                    if (sender) {
+                        try {
+                            await sender.replaceTrack(screenTrack)
+                        } catch (err) {
+                            console.error('[CallProvider] Error replacing track:', err)
+                        }
                     }
-                    peerConnections.current.forEach(pc => {
-                        pc.addTrack(track, stream)
-                    })
                 })
 
-                // Broadcast to others
-                sendSignal('everyone', { type: 'screen-sharing', active: true }, currentUser.id)
+                // Disable local camera track if active
+                if (localStreamRef.current) {
+                    const cameraTrack = localStreamRef.current.getVideoTracks()[0]
+                    if (cameraTrack) {
+                        cameraTrack.enabled = false
+                        setIsCameraOff(true)
+                        // Broadcast state change
+                        sendSignal('everyone', { type: 'camera-toggle', enabled: false }, currentUser?.id)
+                    }
+                }
 
-                // Trigger renegotiation
-                peerConnections.current.forEach(async (pc, targetId) => {
-                    const offer = await pc.createOffer()
-                    await pc.setLocalDescription(offer)
-                    sendSignal(targetId, { type: 'offer', sdp: offer }, currentUser.id)
-                })
+                screenTrack.onended = () => {
+                    stopScreenShare()
+                }
+
+                // Broadcast sharing status for UI (Main Stage)
+                sendSignal('everyone', {
+                    type: 'screen-sharing',
+                    active: true,
+                    streamId: stream.id
+                }, currentUser?.id)
 
             } catch (err) {
-                console.error('Error starting screen share:', err)
+                console.error('[CallProvider] Error starting screen share:', err)
+                stopScreenShare()
             }
         } else {
             stopScreenShare()
         }
     }
 
-    const stopScreenShare = () => {
+    const stopScreenShare = async () => {
         if (screenStreamRef.current) {
             screenStreamRef.current.getTracks().forEach(track => track.stop())
             screenStreamRef.current = null
             setScreenStream(null)
         }
+
+        // Restore camera track to all senders
+        if (localStreamRef.current) {
+            const cameraVideoTrack = localStreamRef.current.getVideoTracks()[0]
+            if (cameraVideoTrack) {
+                cameraVideoTrack.enabled = true
+                setIsCameraOff(false)
+                // Broadcast state change
+                sendSignal('everyone', { type: 'camera-toggle', enabled: true }, currentUser?.id)
+
+                peerConnections.current.forEach(async (pc) => {
+                    const sender = pc.getSenders().find(s => s.track?.kind === 'video')
+                    if (sender) {
+                        try {
+                            await sender.replaceTrack(cameraVideoTrack)
+                        } catch (err) {
+                            console.error('[CallProvider] Error restoring camera track:', err)
+                        }
+                    }
+                })
+            }
+        }
+
         setIsScreenSharing(false)
         setSharingUser(null)
 
         // Notify others
-        sendSignal('everyone', { type: 'screen-sharing', active: false }, currentUser.id)
-
-        // Renegotiate to remove tracks
-        peerConnections.current.forEach(async (pc, targetId) => {
-            const offer = await pc.createOffer()
-            await pc.setLocalDescription(offer)
-            sendSignal(targetId, { type: 'offer', sdp: offer }, currentUser.id)
-        })
+        sendSignal('everyone', { type: 'screen-sharing', active: false }, currentUser?.id)
     }
     const startRecording = () => { }
     const stopRecording = () => { }

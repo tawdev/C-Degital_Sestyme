@@ -52,7 +52,7 @@ export default function ChatSidebar({ conversations, contacts, activeId: propAct
         .filter(contact => contact.full_name?.toLowerCase().includes(searchQuery.toLowerCase()))
 
     return (
-        <div className="flex-1 flex flex-col min-h-0 bg-transparent">
+        <div className="flex-1 flex flex-col h-full min-h-0 bg-transparent">
             {/* Search Bar */}
             <div className="px-8 py-6 border-b border-gray-100 dark:border-white/5 bg-gray-50/30 dark:bg-white/5">
                 <div className="relative group">
