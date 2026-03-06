@@ -74,6 +74,8 @@ interface CallContextType {
     handsRaised: Set<string>
     endCall: () => Promise<void>
     isInCall: boolean
+    isMinimized: boolean
+    setIsMinimized: (minimized: boolean) => void
 }
 
 const CallContext = createContext<CallContextType | null>(null)
@@ -91,6 +93,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     const [meeting, setMeeting] = useState<any>(null)
     const [currentUser, setCurrentUser] = useState<any>(null)
     const [isInCall, setIsInCall] = useState(false)
+    const [isMinimized, setIsMinimized] = useState(false)
 
     const [isMuted, setIsMuted] = useState(false)
     const [isCameraOff, setIsCameraOff] = useState(false)
@@ -817,13 +820,23 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
                     stopScreenShare()
                 }
 
+                // Local state update (Supabase broadcast won't echo back to us)
+                setScreenStream(stream)
+                setIsScreenSharing(true)
+                setSharingUser(currentUser?.id)
+                setParticipantStates(prev => {
+                    const next = new Map(prev)
+                    const current = next.get(currentUser?.id) || { isMuted: false, isCameraOff: false, isRecording: false, isScreenSharing: false }
+                    next.set(currentUser?.id, { ...current, isScreenSharing: true, isCameraOff: true })
+                    return next
+                })
+
                 // Broadcast sharing status for UI (Main Stage)
                 sendSignal('everyone', {
                     type: 'screen-sharing',
                     active: true,
                     streamId: stream.id
                 }, currentUser?.id)
-
             } catch (err) {
                 console.error('[CallProvider] Error starting screen share:', err)
                 stopScreenShare()
@@ -864,6 +877,12 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
         setIsScreenSharing(false)
         setSharingUser(null)
+        setParticipantStates(prev => {
+            const next = new Map(prev)
+            const current = next.get(currentUser?.id) || { isMuted: false, isCameraOff: false, isRecording: false, isScreenSharing: false }
+            next.set(currentUser?.id, { ...current, isScreenSharing: false })
+            return next
+        })
 
         // Notify others
         sendSignal('everyone', { type: 'screen-sharing', active: false }, currentUser?.id)
@@ -921,7 +940,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
             localStream, screenStream, sharingUser, viewMode, setViewMode, joinRequests, admitParticipant,
             isWaiting, polls, createPoll, voteInPoll, closePoll, joinMeeting, leaveMeeting, toggleMute,
             toggleCamera, toggleScreenShare, startRecording, stopRecording, sendMessage, setShowChat,
-            muteParticipant, kickParticipant, toggleRaiseHand, sendReaction, handsRaised, endCall, isInCall
+            muteParticipant, kickParticipant, toggleRaiseHand, sendReaction, handsRaised, endCall, isInCall,
+            isMinimized, setIsMinimized
         }}>
             {children}
         </CallContext.Provider>

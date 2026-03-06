@@ -7,11 +7,13 @@ import { useCall } from '@/components/providers/call-provider'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 
+import MeetingRoom from '@/components/meetings/meeting-room'
+
 export default function MiniCallBar() {
     const router = useRouter()
-    const pathname = usePathname()
     const containerRef = useRef<HTMLDivElement>(null)
     const [isExpanded, setIsExpanded] = useState(true)
+    const handleExpand = () => setIsExpanded(!isExpanded)
 
     const {
         isInCall,
@@ -27,16 +29,16 @@ export default function MiniCallBar() {
         localStream,
         currentUser,
         sharingUser,
-        screenStream
+        screenStream,
+        isMinimized,
+        setIsMinimized
     } = useCall()
 
-    // Don't show if not in call
-    if (!isInCall || !meetingId) return null
+    const pathname = usePathname()
 
-    // Don't show if on the meeting page
-    if (pathname.includes(`/meetings/${meetingId}`)) return null
-
-    const handleExpand = () => setIsExpanded(!isExpanded)
+    // Don't show anything globally if not in call or missing data
+    // OR if we are already on the meetings page (to avoid overlap)
+    if (!isInCall || !meetingId || !meeting || !currentUser || pathname.startsWith('/meetings/')) return null
 
     // Determine what to show in the video preview
     const presenterId = sharingUser || activeSpeaker

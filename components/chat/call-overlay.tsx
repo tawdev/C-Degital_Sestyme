@@ -4,6 +4,9 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, Maximize2, Minimize2, User, PictureInPicture, MoveDownLeft, UserPlus, Monitor, MonitorOff } from 'lucide-react'
 import InviteParticipantModal from './invite-participant-modal'
 import EmployeeAvatar from '@/components/employee-avatar'
+import { useCall } from '@/components/providers/call-provider'
+import { useRouter } from 'next/navigation'
+import ScreenShareLayout from '@/components/meetings/screen-share-layout'
 
 interface CallOverlayProps {
     state: any
@@ -25,6 +28,7 @@ interface CallOverlayProps {
     onStopScreenShare: () => void
     isScreenSharing: boolean
     screenSharingUserId: string | null
+    screenStream: MediaStream | null
     isRecording?: boolean
 }
 
@@ -48,6 +52,7 @@ export default function CallOverlay({
     onStopScreenShare,
     isScreenSharing,
     screenSharingUserId,
+    screenStream,
     isRecording
 }: CallOverlayProps) {
     useEffect(() => {
@@ -72,8 +77,9 @@ export default function CallOverlay({
     const remoteAudioRefs = useRef<Record<string, HTMLAudioElement | null>>({})
     const [duration, setDuration] = useState(0)
     const [isFullscreen, setIsFullscreen] = useState(false)
-    const [isMinimized, setIsMinimized] = useState(false)
     const [showInviteModal, setShowInviteModal] = useState(false)
+    const { isMinimized, setIsMinimized } = useCall()
+    const router = useRouter()
 
     const lastLocalStream = useRef<string>('')
 
@@ -232,12 +238,12 @@ export default function CallOverlay({
                 <div
                     ref={containerRef}
                     className={`
-                    bg-gray-900 border-white/10 overflow-hidden shadow-2xl relative flex flex-col transition-all duration-300 ease-in-out
+                    bg-gray-900 border-white/10 overflow-hidden shadow-2xl flex flex-col transition-all duration-300 ease-in-out group
                     ${isMinimized
-                            ? 'fixed bottom-4 right-4 w-80 aspect-video rounded-xl pointer-events-auto border-2 border-indigo-500/50 hover:border-indigo-500'
+                            ? 'absolute bottom-6 right-6 w-80 aspect-video rounded-xl pointer-events-auto border-2 border-indigo-500/50 hover:border-indigo-500'
                             : isFullscreen
-                                ? 'w-full h-full max-w-none rounded-none'
-                                : 'w-full max-w-4xl aspect-video rounded-3xl border'
+                                ? 'relative w-full h-full max-w-none rounded-none'
+                                : 'relative w-full max-w-4xl aspect-video rounded-3xl border'
                         }
                 `}
                 >
@@ -249,105 +255,96 @@ export default function CallOverlay({
                         </div>
                     )}
 
-                    {/* Main View (Unified Video Grid) */}
-                    <div className={`flex-1 relative bg-gray-800 p-2 overflow-hidden group`}>
-                        <div className={`grid h-full w-full gap-2 transition-all duration-500 
-                            ${isScreenSharing ? 'grid-cols-1' :
-                                state.participants.length <= 1 ? 'grid-cols-1' :
+                    {/* Main View */}
+                    {screenSharingUserId && !isMinimized ? (
+                        /* ── Screen Share Layout (Google Meet style) ── */
+                        <ScreenShareLayout
+                            sharingStream={
+                                screenSharingUserId === currentUserId
+                                    ? screenStream
+                                    : (remoteStreams[screenSharingUserId] || null)
+                            }
+                            presenterCameraStream={
+                                screenSharingUserId === currentUserId
+                                    ? localStream
+                                    : (remoteStreams[screenSharingUserId] || null)
+                            }
+                            sharingUser={screenSharingUserId}
+                            currentUserId={currentUserId}
+                            remoteStreams={new Map(Object.entries(remoteStreams))}
+                            localStream={localStream}
+                            participants={state.participants.map((p: any) => ({
+                                id: p.id,
+                                name: p.name,
+                                avatar: p.avatar || null,
+                                role: p.role
+                            }))}
+                            participantStates={new Map(
+                                state.participants.map((p: any) => [
+                                    p.id,
+                                    { isMuted: p.id === currentUserId ? isMuted : (p.isMuted || false), isCameraOff: p.id === currentUserId ? isCameraOff : (p.isCameraOff || false) }
+                                ])
+                            )}
+                            isMuted={isMuted}
+                            isCameraOff={isCameraOff}
+                        />
+                    ) : (
+                        /* ── Normal Grid View ── */
+                        <div className="flex-1 relative bg-gray-800 p-2 overflow-hidden">
+                            <div className={`grid h-full w-full gap-2 transition-all duration-500 
+                                ${state.participants.length <= 1 ? 'grid-cols-1' :
                                     state.participants.length === 2 ? 'grid-cols-1 md:grid-cols-2' :
                                         state.participants.length <= 4 ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3'}`}>
 
-                            {state.participants.filter((p: any) => {
-                                // In 1-to-1 calls, we show the other person full screen and local in corner
-                                // In group calls, we show everyone in the grid
-                                const total = state.participants.length
-                                if (total <= 2) return p.id !== currentUserId
-                                return true
-                            }).map((p: any) => {
-                                const isLocal = p.id === currentUserId
-                                const stream = isLocal ? localStream : remoteStreams[p.id]
-                                const hasVideo = !!stream && stream.getVideoTracks().length > 0
-                                const isVideoOff = isLocal ? isCameraOff : p.isCameraOff
-                                const isAudioMuted = isLocal ? isMuted : p.isMuted
+                                {state.participants.filter((p: any) => {
+                                    const total = state.participants.length
+                                    if (total <= 2) return p.id !== currentUserId
+                                    return true
+                                }).map((p: any) => {
+                                    const isLocal = p.id === currentUserId
+                                    const stream = isLocal ? localStream : remoteStreams[p.id]
+                                    const isVideoOff = isLocal ? isCameraOff : p.isCameraOff
+                                    const isAudioMuted = isLocal ? isMuted : p.isMuted
 
-                                const isSharer = screenSharingUserId === p.id
-
-                                return (
-                                    <div key={p.id} className={`relative bg-gray-900 rounded-2xl overflow-hidden group/video border shadow-lg transition-all duration-500 ${isSharer ? 'border-indigo-500 shadow-indigo-500/20' : 'border-white/5'}`}>
-                                        {/* Video Element */}
-                                        {state.type === 'video' && !isVideoOff && stream ? (
-                                            <video
-                                                ref={isLocal ? setLocalVideoRef : (el) => {
-                                                    if (el && stream && el.srcObject !== stream) {
-                                                        el.srcObject = stream
-                                                        el.play().catch(e => console.error('Remote play error', e))
-                                                    }
-                                                    // Store ref if needed
-                                                    if (!isLocal) remoteVideoRefs.current[p.id] = el
-                                                }}
-                                                autoPlay
-                                                muted={isLocal} // Always mute local to prevent echo
-                                                playsInline
-                                                style={isLocal && !isScreenSharing ? { transform: 'scaleX(-1)' } : undefined}
-                                                className={`w-full h-full ${isSharer ? 'object-contain bg-black' : 'object-cover'}`}
-                                            />
-                                        ) : (
-                                            <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-gray-800 to-gray-950">
-                                                <EmployeeAvatar
-                                                    avatarUrl={p.avatar}
-                                                    fullName={p.name}
-                                                    className="w-24 h-24 text-2xl border-2 border-indigo-500/20 shadow-xl"
+                                    return (
+                                        <div key={p.id} className="relative bg-gray-900 rounded-2xl overflow-hidden group/video border border-white/5 shadow-lg">
+                                            {state.type === 'video' && !isVideoOff && stream ? (
+                                                <video
+                                                    ref={isLocal ? setLocalVideoRef : (el) => {
+                                                        if (el && stream && el.srcObject !== stream) {
+                                                            el.srcObject = stream
+                                                            el.play().catch(e => console.error('Remote play error', e))
+                                                        }
+                                                        if (!isLocal) remoteVideoRefs.current[p.id] = el
+                                                    }}
+                                                    autoPlay
+                                                    muted={isLocal}
+                                                    playsInline
+                                                    style={isLocal ? { transform: 'scaleX(-1)' } : undefined}
+                                                    className="w-full h-full object-cover"
                                                 />
-                                                <div className="text-center">
+                                            ) : (
+                                                <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-gray-800 to-gray-950">
+                                                    <EmployeeAvatar avatarUrl={p.avatar} fullName={p.name} className="w-24 h-24 text-2xl border-2 border-indigo-500/20 shadow-xl" />
                                                     <p className="text-white font-medium">{p.name} {isLocal && '(Moi)'}</p>
-                                                    <p className="text-indigo-400 text-[10px] uppercase tracking-widest font-bold">
-                                                        {isVideoOff ? 'Caméra désactivée' : 'En attente...'}
-                                                    </p>
                                                 </div>
+                                            )}
+                                            {!isLocal && (
+                                                <audio autoPlay playsInline ref={(el) => {
+                                                    if (el && stream && stream.getAudioTracks().length > 0 && el.srcObject !== stream) { el.srcObject = stream; el.play().catch(() => { }) }
+                                                }} />
+                                            )}
+                                            <div className="absolute bottom-4 left-4 px-3 py-1.5 bg-black/60 backdrop-blur-md rounded-xl border border-white/10 flex items-center gap-2">
+                                                <div className={`w-1.5 h-1.5 rounded-full ${stream ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}></div>
+                                                <p className="text-white text-[11px] font-bold uppercase tracking-wider">{p.name} {isLocal && '(Moi)'}</p>
+                                                {isAudioMuted && <MicOff className="w-3 h-3 text-red-400" />}
                                             </div>
-                                        )}
-
-                                        {/* Audio Element for Remote Users */}
-                                        {!isLocal && (
-                                            <audio
-                                                autoPlay
-                                                playsInline
-                                                ref={(el) => {
-                                                    if (el && stream && stream.getAudioTracks().length > 0 && el.srcObject !== stream) {
-                                                        el.srcObject = stream
-                                                        el.play().catch(e => console.error('Audio play error', e))
-                                                    }
-                                                }}
-                                            />
-                                        )}
-
-                                        {/* Status Indicators */}
-                                        <div className="absolute top-4 right-4 flex gap-2">
-                                            {isSharer && (
-                                                <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-500/90 backdrop-blur-md rounded-lg border border-indigo-400/50 shadow-lg animate-in slide-in-from-top-2 duration-300">
-                                                    <Monitor className="w-4 h-4 text-white" />
-                                                    <span className="text-white text-[10px] font-bold uppercase tracking-wider">Partage d'écran</span>
-                                                </div>
-                                            )}
-                                            {isAudioMuted && (
-                                                <div className="p-2 bg-red-500/80 backdrop-blur-md rounded-lg border border-red-400/50 shadow-lg">
-                                                    <MicOff className="w-4 h-4 text-white" />
-                                                </div>
-                                            )}
                                         </div>
-
-                                        {/* Name Tag */}
-                                        <div className="absolute bottom-4 left-4 px-3 py-1.5 bg-black/60 backdrop-blur-md rounded-xl border border-white/10 flex items-center gap-2">
-                                            <div className={`w-1.5 h-1.5 rounded-full ${stream ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}></div>
-                                            <p className="text-white text-[11px] font-bold uppercase tracking-wider">
-                                                {p.name} {isLocal && '(Moi)'}
-                                            </p>
-                                        </div>
-                                    </div>
-                                )
-                            })}
+                                    )
+                                })}
+                            </div>
                         </div>
-                    </div>
+                    )}
                     {/* Local Video Preview (PICTURE IN PICTURE) - Only for 1-to-1 calls */}
                     {!isMinimized && state.type === 'video' && totalParticipants <= 2 && (
                         <div className="absolute top-6 right-6 w-1/4 aspect-video bg-gray-900 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/20 z-10 transition-all hover:scale-105 active:scale-95">

@@ -4,13 +4,14 @@ import React, { useEffect, useState } from 'react'
 import {
     Mic, MicOff, Video, VideoOff, ScreenShare, StopCircle,
     MessageSquare, Users, Settings, PhoneOff,
-    Send, Radio, Clock, BarChart3, Trash2, X, Smile, Hand
+    Send, Radio, Clock, BarChart3, Trash2, X, Smile, Hand, Minimize2
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { VideoCard } from '@/components/meetings/video-card'
 import { MeetingLobby } from './meeting-lobby'
 import { PollsPanel } from './polls-panel'
 import EmployeeAvatar from '@/components/employee-avatar'
+import ScreenShareLayout from './screen-share-layout'
 import { useRouter } from 'next/navigation'
 import { useCall } from '@/components/providers/call-provider'
 import { cn } from '@/lib/utils'
@@ -61,7 +62,8 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
         screenStream,
         sharingUser,
         polls,
-        endCall
+        endCall,
+        setIsMinimized
     } = useCall()
 
     const [showParticipants, setShowParticipants] = useState(false)
@@ -132,68 +134,81 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
 
             {/* Main Content Area */}
             <div className="flex-1 flex overflow-hidden relative">
-                <div className="flex-1 p-4 md:p-6 flex flex-col gap-6 items-center overflow-y-auto custom-scrollbar">
-                    <AnimatePresence mode="popLayout">
-                        {/* Main Stage (Screen Share) */}
-                        {sharingUser && (
+                <div className="flex-1 flex flex-col overflow-hidden">
+                    <AnimatePresence mode="wait">
+                        {sharingUser ? (
+                            /* ── Screen Share Layout (Google Meet style) ── */
                             <motion.div
-                                initial={{ opacity: 0, scale: 0.9 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.9 }}
-                                className="w-full max-w-7xl aspect-video relative z-20"
-                            >
-                                <VideoCard
-                                    participant={participants.find(p => p.id === sharingUser) || (sharingUser === currentUser?.id ? { ...currentUser, name: currentUser?.full_name, avatar: currentUser?.avatar_url } : { id: sharingUser, name: 'Partageur', avatar: null })}
-                                    stream={sharingUser === currentUser?.id ? screenStream : (remoteScreenStreams?.get(sharingUser) || remoteStreams?.get(sharingUser) || null)}
-                                    isLocal={sharingUser === currentUser?.id}
-                                    isMuted={false}
-                                    isCameraOff={false}
-                                    isSharing={true}
-                                    isMainStage={true}
-                                    className="w-full h-full shadow-[0_0_50px_rgba(99,102,241,0.2)]"
-                                />
-                            </motion.div>
-                        )}
-
-                        {/* Participant Grid */}
-                        {participants.length >= (sharingUser ? 0 : 1) ? (
-                            <motion.div
+                                key="screen-share"
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
-                                className={`w-full max-w-7xl mx-auto grid gap-4 items-center justify-center ${sharingUser
-                                    ? 'grid-cols-2 md:grid-cols-4 lg:grid-cols-6' // Mini grid when sharing
-                                    : (participants.length === 1 ? 'grid-cols-1 max-w-4xl' :
-                                        participants.length === 2 ? 'grid-cols-1 md:grid-cols-2' :
-                                            'grid-cols-1 md:grid-cols-2 lg:grid-cols-3')
-                                    }`}
+                                exit={{ opacity: 0 }}
+                                className="flex-1 flex overflow-hidden"
                             >
-                                {participants?.map((p) => {
-                                    const isLocal = p.id === currentUser?.id
-                                    const stream = isLocal ? localStream : (remoteStreams?.get(p.id) || null)
-                                    const state = isLocal ? { isMuted, isCameraOff } : (participantStates?.get(p.id) || { isMuted: false, isCameraOff: false })
-
-                                    return (
-                                        <VideoCard
-                                            key={p.id}
-                                            participant={isLocal ? { ...currentUser, name: currentUser?.full_name, avatar: currentUser?.avatar_url } : p}
-                                            stream={stream}
-                                            isLocal={isLocal}
-                                            isMuted={state.isMuted}
-                                            isCameraOff={state.isCameraOff}
-                                            isSharing={sharingUser === p.id}
-                                            isHost={meeting?.host_id === p.id}
-                                            isActiveSpeaker={activeSpeaker === p.id}
-                                            isHandRaised={handsRaised?.has(p.id)}
-                                            connectionState={connectionStates?.get(p.id)}
-                                            className={cn(
-                                                "w-full aspect-video",
-                                                sharingUser && "scale-90 opacity-80 hover:scale-100 hover:opacity-100 transition-all"
-                                            )}
-                                        />
-                                    )
-                                })}
+                                <ScreenShareLayout
+                                    sharingStream={
+                                        sharingUser === currentUser?.id
+                                            ? screenStream
+                                            : (remoteScreenStreams?.get(sharingUser) || remoteStreams?.get(sharingUser) || null)
+                                    }
+                                    presenterCameraStream={
+                                        sharingUser === currentUser?.id
+                                            ? localStream
+                                            : (remoteStreams?.get(sharingUser) || null)
+                                    }
+                                    sharingUser={sharingUser}
+                                    currentUserId={currentUser?.id}
+                                    remoteStreams={remoteStreams}
+                                    localStream={localStream}
+                                    participants={participants}
+                                    participantStates={participantStates}
+                                    isMuted={isMuted}
+                                    isCameraOff={isCameraOff}
+                                    connectionStates={connectionStates}
+                                />
                             </motion.div>
-                        ) : null}
+                        ) : (
+                            /* ── Normal Grid Layout ── */
+                            <motion.div
+                                key="grid"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="flex-1 p-4 md:p-6 flex flex-col gap-6 items-center overflow-y-auto custom-scrollbar"
+                            >
+                                {participants.length >= 1 && (
+                                    <div className={`w-full max-w-7xl mx-auto grid gap-4 items-center justify-center ${participants.length === 1 ? 'grid-cols-1 max-w-4xl' :
+                                            participants.length === 2 ? 'grid-cols-1 md:grid-cols-2' :
+                                                'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
+                                        }`}>
+                                        {participants?.map((p) => {
+                                            const isLocal = p.id === currentUser?.id
+                                            const stream = isLocal ? localStream : (remoteStreams?.get(p.id) || null)
+                                            const state = isLocal
+                                                ? { isMuted, isCameraOff }
+                                                : (participantStates?.get(p.id) || { isMuted: false, isCameraOff: false })
+
+                                            return (
+                                                <VideoCard
+                                                    key={p.id}
+                                                    participant={isLocal ? { ...currentUser, name: currentUser?.full_name, avatar: currentUser?.avatar_url } : p}
+                                                    stream={stream}
+                                                    isLocal={isLocal}
+                                                    isMuted={state.isMuted}
+                                                    isCameraOff={state.isCameraOff}
+                                                    isSharing={sharingUser === p.id}
+                                                    isHost={meeting?.host_id === p.id}
+                                                    isActiveSpeaker={activeSpeaker === p.id}
+                                                    isHandRaised={handsRaised?.has(p.id)}
+                                                    connectionState={connectionStates?.get(p.id)}
+                                                    className="w-full aspect-video"
+                                                />
+                                            )
+                                        })}
+                                    </div>
+                                )}
+                            </motion.div>
+                        )}
                     </AnimatePresence>
                 </div>
 
@@ -412,13 +427,25 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
                     </button>
                 </div>
 
-                <button
-                    onClick={() => endCall()}
-                    className="bg-red-600 hover:bg-red-700 text-white px-8 py-5 rounded-2xl font-black shadow-2xl flex items-center gap-3 transition-all active:scale-95"
-                >
-                    <PhoneOff className="w-6 h-6" />
-                    <span className="hidden md:inline uppercase tracking-widest text-[10px]">Quitter</span>
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => {
+                            setIsMinimized(true)
+                            router.push('/meetings')
+                        }}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white p-5 rounded-2xl shadow-2xl transition-all active:scale-95"
+                        title="Minimize Call"
+                    >
+                        <Minimize2 className="w-6 h-6" />
+                    </button>
+                    <button
+                        onClick={() => endCall()}
+                        className="bg-red-600 hover:bg-red-700 text-white px-8 py-5 rounded-2xl font-black shadow-2xl flex items-center gap-3 transition-all active:scale-95"
+                    >
+                        <PhoneOff className="w-6 h-6" />
+                        <span className="hidden md:inline uppercase tracking-widest text-[10px]">Quitter</span>
+                    </button>
+                </div>
             </div>
         </div>
     )

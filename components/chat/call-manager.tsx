@@ -79,6 +79,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
     const [isMuted, setIsMuted] = useState(false)
     const [isCameraOff, setIsCameraOff] = useState(false)
     const [localStream, setLocalStream] = useState<MediaStream | null>(null)
+    const [screenStream, setScreenStream] = useState<MediaStream | null>(null)
     const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({})
     const localStreamRef = useRef<MediaStream | null>(null)
     const remoteStreamsRef = useRef<Record<string, MediaStream>>({})
@@ -786,6 +787,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
             }
 
             screenStreamRef.current = screenStream
+            setScreenStream(screenStream)
 
             // Broadcast screen share start to all participants
             const targets = state.participants.filter((p: CallParticipant) => p.id !== currentUser.id).map((p: CallParticipant) => p.id)
@@ -820,9 +822,10 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
             if (screenStreamRef.current) {
                 screenStreamRef.current.getTracks().forEach(track => track.stop())
                 screenStreamRef.current = null
+                setScreenStream(null)
             }
 
-            // Restore original camera track
+            // Restore original camera track if it was replaced in all peer connections
             const originalTrack = originalVideoTrackRef.current
             if (originalTrack && localStreamRef.current) {
                 // Replace screen track with camera track in all peer connections
@@ -835,17 +838,9 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                         console.log(`[CallManager] Restored camera track for ${otherUserId}`)
                     }
                 }))
-
-                // Update local stream
-                const audioTrack = localStreamRef.current.getAudioTracks()[0]
-                const newStream = new MediaStream()
-                if (audioTrack) newStream.addTrack(audioTrack)
-                newStream.addTrack(originalTrack)
-                localStreamRef.current = newStream
-                setLocalStream(newStream)
             }
 
-            // Broadcast screen share stop
+            // Broadcast screen share stop to all participants
             const targets = state.participants.filter((p: CallParticipant) => p.id !== currentUser.id).map((p: CallParticipant) => p.id)
             if (targets.length > 0) {
                 broadcastSignal('screen-share-stop', currentUser.id, targets)
@@ -853,6 +848,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
 
             // Update state
             setCallState(prev => ({ ...prev, isScreenSharing: false, screenSharingUserId: null }))
+            setScreenStream(null)
 
             console.log('[CallManager] Screen sharing stopped successfully')
         } catch (err) {
@@ -1018,6 +1014,7 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                     onInvite={inviteParticipant} currentUserId={currentUser.id}
                     onStartScreenShare={startScreenShare} onStopScreenShare={stopScreenShare}
                     isScreenSharing={callState.isScreenSharing} screenSharingUserId={callState.screenSharingUserId}
+                    screenStream={screenStream}
                     isRecording={recordingStatus}
                 />
             )}
