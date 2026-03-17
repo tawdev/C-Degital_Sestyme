@@ -1,11 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import Link from 'next/link'
-import { Trash2, Edit, Plus, Globe, User, Activity, Clock, CheckCircle2, Eye } from 'lucide-react'
+import { Trash2, Edit, Plus, Globe, User, Activity, Clock, CheckCircle2, Eye, Users } from 'lucide-react'
 import { deleteProject } from './actions'
 import { getSession, logout } from '@/app/auth/actions'
 import { redirect } from 'next/navigation'
 import EmployeeAvatar from '@/components/employee-avatar'
+import ProjectFilters from './project-filters'
 
 interface Project {
     id: string
@@ -16,7 +17,7 @@ interface Project {
     status: string
     progress: number
     employee_id: string | null
-    employees: { full_name: string, avatar_url: string | null } | { full_name: string, avatar_url: string | null }[] | null
+    employees: { id: string, full_name: string, avatar_url: string | null } | { id: string, full_name: string, avatar_url: string | null }[] | null
 }
 
 export default async function ProjectsPage({
@@ -53,6 +54,14 @@ export default async function ProjectsPage({
     const isAdmin = currentUser.role === 'Administrator'
     const currentUserId = currentUser.id
 
+    // Fetch all employees for filtering
+    const { data: employeesData } = await supabase
+        .from('employees')
+        .select('id, full_name, avatar_url')
+        .order('full_name')
+
+    const employees = employeesData || []
+
     // ────────────────────────────────────────────
     // جلب المشاريع
     // Fetch Projects
@@ -63,7 +72,7 @@ export default async function ProjectsPage({
     const adminClient = createAdminClient()
     let query = adminClient
         .from('projects')
-        .select('*, employees!projects_employee_id_fkey(full_name, avatar_url)')
+        .select('*, employees!projects_employee_id_fkey(id, full_name, avatar_url)')
 
     // إذا كان هناك فلتر من searchParams (من صفحة البروفايل)
     // If there's a filter from searchParams (from profile page)
@@ -85,15 +94,26 @@ export default async function ProjectsPage({
     return (
         <div className="max-w-7xl mx-auto space-y-10 pb-12 transition-colors duration-500">
             {/* Header */}
-            <div className="relative overflow-hidden bg-white/70 dark:bg-white/5 backdrop-blur-2xl rounded-[2.5rem] border border-gray-200 dark:border-white/10 p-8 md:p-10 shadow-2xl shadow-indigo-900/5">
+            <div className="relative bg-white/70 dark:bg-white/5 backdrop-blur-2xl rounded-[2.5rem] border border-gray-200 dark:border-white/10 p-8 md:p-10 shadow-2xl shadow-indigo-900/5 z-40">
                 <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
-                    <div>
-                        <h1 className="text-4xl lg:text-5xl font-black text-gray-900 dark:text-white tracking-tight">
-                            Projets
-                        </h1>
-                        <p className="mt-3 text-lg text-gray-600 dark:text-indigo-200/60 font-medium max-w-2xl">
-                            Gérez les projets de sites web et suivez leur progression avec une clarté totale.
-                        </p>
+                    <div className="flex-1">
+                        <div className="flex flex-col md:flex-row md:items-center gap-6">
+                            <div>
+                                <h1 className="text-4xl lg:text-5xl font-black text-gray-900 dark:text-white tracking-tight">
+                                    Projets
+                                </h1>
+                                <p className="mt-3 text-lg text-gray-600 dark:text-indigo-200/60 font-medium max-w-2xl">
+                                    Gérez les projets de sites web et suivez leur progression avec une clarté totale.
+                                </p>
+                            </div>
+                            
+                            <div className="hidden md:block w-px h-12 bg-gray-200 dark:bg-white/10 lg:mx-4" />
+
+                            <ProjectFilters 
+                                employees={employees} 
+                                currentEmployeeId={searchParams.employee_id} 
+                            />
+                        </div>
                     </div>
                     {/* Allow both Employees and Admins to create projects */}
                     {!isAdmin && (
@@ -109,8 +129,16 @@ export default async function ProjectsPage({
                 <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/10 dark:bg-purple-600/20 blur-[100px] rounded-full animate-pulse"></div>
             </div>
 
+            {/* Mobile Filters Area */}
+            <div className="md:hidden">
+                <ProjectFilters 
+                    employees={employees} 
+                    currentEmployeeId={searchParams.employee_id} 
+                />
+            </div>
+
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 relative z-30">
                 {[
                     { label: 'Total des projets', value: projects.length, icon: Activity, color: 'text-blue-600', bgColor: 'bg-blue-50' },
                     { label: 'En cours', value: activeCount, icon: Activity, color: 'text-emerald-600', bgColor: 'bg-emerald-50' },
