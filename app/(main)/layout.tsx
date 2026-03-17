@@ -52,7 +52,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
         <AudioProvider>
             <NotificationProvider>
                 <CallProvider currentUser={currentUser}>
-                    <RealtimeProvider currentUserId={session.id}>
+                    <RealtimeProvider currentUser={currentUser}>
                         <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-[#050505] overflow-x-hidden">
                             {/* Global Notification */}
                             <MeetingNotification />

@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react'
 import {
     Mic, MicOff, Video, VideoOff, ScreenShare, StopCircle,
     MessageSquare, Users, Settings, PhoneOff,
-    Send, Radio, Clock, BarChart3, Trash2, X, Smile, Hand, Minimize2
+    Send, Radio, Clock, BarChart3, Trash2, X, Smile, Hand, Minimize2, UserX, Ban
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { VideoCard } from '@/components/meetings/video-card'
@@ -36,6 +36,7 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
         setShowChat,
         muteParticipant,
         kickParticipant,
+        blockParticipant,
         toggleRaiseHand,
         sendReaction,
         admitParticipant,
@@ -200,6 +201,9 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
                                                     isHost={meeting?.host_id === p.id}
                                                     isActiveSpeaker={activeSpeaker === p.id}
                                                     isHandRaised={handsRaised?.has(p.id)}
+                                                    isCurrentUserHost={meeting?.host_id === currentUser?.id || currentUser?.role?.toLowerCase() === 'administrator'}
+                                                    onKick={kickParticipant}
+                                                    onBlock={blockParticipant}
                                                     connectionState={connectionStates?.get(p.id)}
                                                     className="w-full aspect-video"
                                                 />
@@ -281,14 +285,42 @@ export default function MeetingRoom({ meetingId, meeting, currentUser }: Meeting
                                         <div className="space-y-3">
                                             <h4 className="text-[9px] font-black uppercase tracking-widest text-gray-500 px-2">Présents ({participants?.length || 0})</h4>
                                             <div className="space-y-2">
-                                                {participants?.map((p) => (
-                                                    <div key={p.id} className="flex items-center gap-3 px-2 py-1">
+                                                 {participants?.map((p) => (
+                                                     <div key={p.id} className="flex items-center gap-3 px-2 py-1 group">
                                                         <EmployeeAvatar avatarUrl={p.avatar} fullName={p.name} className="w-8 h-8" />
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="text-xs font-bold truncate">{p.name}</p>
-                                                            {meeting?.host_id === p.id && <span className="text-[8px] text-amber-500 font-black uppercase">Host</span>}
-                                                        </div>
-                                                    </div>
+                                                         <div className="flex-1 min-w-0">
+                                                             <p className="text-xs font-bold truncate">{p.name}</p>
+                                                             {meeting?.host_id === p.id && <span className="text-[8px] text-amber-500 font-black uppercase">Host</span>}
+                                                         </div>
+                                                         
+                                                         {/* Host Controls */}
+                                                         {(meeting?.host_id === currentUser?.id || currentUser?.role === 'Administrator') && p.id !== currentUser?.id && (
+                                                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                 <button
+                                                                     onClick={() => {
+                                                                         if (window.confirm(`Êtes-vous sûr de vouloir expulser ${p.name} ?`)) {
+                                                                             kickParticipant(p.id)
+                                                                         }
+                                                                     }}
+                                                                     className="p-1.5 hover:bg-red-500/10 text-gray-400 hover:text-red-500 rounded-lg transition-colors"
+                                                                     title="Expulser"
+                                                                 >
+                                                                     <UserX className="w-3.5 h-3.5" />
+                                                                 </button>
+                                                                 <button
+                                                                     onClick={() => {
+                                                                         if (window.confirm(`Êtes-vous sûr de vouloir bloquer ${p.name} ? Il ne pourra plus rejoindre cette session.`)) {
+                                                                             blockParticipant(p.id)
+                                                                         }
+                                                                     }}
+                                                                     className="p-1.5 hover:bg-gray-500/10 text-gray-400 hover:text-gray-600 dark:hover:text-white rounded-lg transition-colors"
+                                                                     title="Bloquer"
+                                                                 >
+                                                                     <Ban className="w-3.5 h-3.5" />
+                                                                 </button>
+                                                             </div>
+                                                         )}
+                                                     </div>
                                                 ))}
                                             </div>
                                         </div>

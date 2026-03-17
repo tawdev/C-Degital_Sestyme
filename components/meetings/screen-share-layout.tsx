@@ -2,7 +2,10 @@
 
 import React, { useRef, useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Mic, MicOff, Video, VideoOff, X, Maximize2, Minimize2, Monitor, ChevronLeft, ChevronRight } from 'lucide-react'
+import { 
+    Mic, MicOff, Video, VideoOff, X, Maximize2, Minimize2, 
+    Monitor, ChevronLeft, ChevronRight, MoreVertical, Ban, UserX 
+} from 'lucide-react'
 import EmployeeAvatar from '@/components/employee-avatar'
 import { cn } from '@/lib/utils'
 
@@ -32,6 +35,9 @@ interface ScreenShareLayoutProps {
     isMuted: boolean
     isCameraOff: boolean
     connectionStates?: Map<string, RTCPeerConnectionState>
+    isCurrentUserHost?: boolean
+    onKick?: (userId: string) => void
+    onBlock?: (userId: string) => void
 }
 
 export default function ScreenShareLayout({
@@ -45,6 +51,9 @@ export default function ScreenShareLayout({
     participantStates,
     isMuted,
     isCameraOff,
+    isCurrentUserHost = false,
+    onKick,
+    onBlock
 }: ScreenShareLayoutProps) {
     const isLocalPresenter = sharingUser === currentUserId
     const presenterParticipant = participants.find(p => p.id === sharingUser)
@@ -66,6 +75,9 @@ export default function ScreenShareLayout({
             isMuted={isMuted}
             isCameraOff={isCameraOff}
             presenterParticipant={presenterParticipant}
+            isCurrentUserHost={isCurrentUserHost}
+            onKick={onKick}
+            onBlock={onBlock}
         />
         : <AudienceView
             sharingStream={sharingStream}
@@ -81,6 +93,9 @@ export default function ScreenShareLayout({
             isCameraOff={isCameraOff}
             stripRef={stripRef}
             scrollStrip={scrollStrip}
+            isCurrentUserHost={isCurrentUserHost}
+            onKick={onKick}
+            onBlock={onBlock}
         />
 }
 
@@ -99,6 +114,9 @@ function PresenterView({
     isMuted,
     isCameraOff,
     presenterParticipant,
+    isCurrentUserHost,
+    onKick,
+    onBlock
 }: {
     sharingStream: MediaStream | null
     localStream: MediaStream | null
@@ -109,6 +127,9 @@ function PresenterView({
     isMuted: boolean
     isCameraOff: boolean
     presenterParticipant: Participant | undefined
+    isCurrentUserHost?: boolean
+    onKick?: (id: string) => void
+    onBlock?: (id: string) => void
 }) {
     const [showScreenPreview, setShowScreenPreview] = useState(true)
     const [previewExpanded, setPreviewExpanded] = useState(false)
@@ -165,6 +186,9 @@ function PresenterView({
                                 isMuted={state.isMuted}
                                 isCameraOff={state.isCameraOff}
                                 large
+                                isCurrentUserHost={isCurrentUserHost}
+                                onKick={onKick}
+                                onBlock={onBlock}
                             />
                         )
                     })}
@@ -277,6 +301,9 @@ function AudienceView({
     isCameraOff,
     stripRef,
     scrollStrip,
+    isCurrentUserHost,
+    onKick,
+    onBlock
 }: {
     sharingStream: MediaStream | null
     presenterCameraStream: MediaStream | null
@@ -291,6 +318,9 @@ function AudienceView({
     isCameraOff: boolean
     stripRef: React.RefObject<HTMLDivElement | null>
     scrollStrip: (dir: 'left' | 'right') => void
+    isCurrentUserHost?: boolean
+    onKick?: (id: string) => void
+    onBlock?: (id: string) => void
 }) {
     const mainVideoRef = useRef<HTMLVideoElement>(null)
     const presenterCamRef = useRef<HTMLVideoElement>(null)
@@ -454,6 +484,9 @@ function AudienceView({
                                 isPresenter={isPresenter}
                                 isMuted={state.isMuted}
                                 isCameraOff={state.isCameraOff}
+                                isCurrentUserHost={isCurrentUserHost}
+                                onKick={onKick}
+                                onBlock={onBlock}
                             />
                         )
                     })}
@@ -480,6 +513,9 @@ function ThumbnailCard({
     isMuted,
     isCameraOff,
     large = false,
+    isCurrentUserHost,
+    onKick,
+    onBlock
 }: {
     participant: Participant
     stream: MediaStream | null
@@ -488,6 +524,9 @@ function ThumbnailCard({
     isMuted: boolean
     isCameraOff: boolean
     large?: boolean
+    isCurrentUserHost?: boolean
+    onKick?: (id: string) => void
+    onBlock?: (id: string) => void
 }) {
     const videoRef = useRef<HTMLVideoElement>(null)
 
@@ -533,10 +572,26 @@ function ThumbnailCard({
                 </div>
             )}
             <div className="absolute inset-x-0 bottom-0 px-2 py-1 bg-gradient-to-t from-black/90 to-transparent
-                            flex items-end justify-between">
+                            flex items-end justify-between group">
                 <span className={cn("font-bold text-white truncate max-w-[80%]", large ? "text-[11px]" : "text-[9px]")}>
                     {participant.name} {isLocal && '(Moi)'}
                 </span>
+                
+                {/* Host Controls in Thumbnail */}
+                {isCurrentUserHost && !isLocal && (
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
+                        <button 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm(`Expulser ${participant.name} ?`)) onKick?.(participant.id);
+                            }}
+                            className="p-1 hover:bg-red-500/20 text-red-400 rounded transition-colors"
+                        >
+                            <UserX className="w-3 h-3" />
+                        </button>
+                    </div>
+                )}
+
                 <div className="flex items-center gap-1">
                     {isMuted && <MicOff className={large ? "w-3.5 h-3.5 text-red-400" : "w-2.5 h-2.5 text-red-400"} />}
                     {isCameraOff && <VideoOff className={large ? "w-3.5 h-3.5 text-red-400" : "w-2.5 h-2.5 text-red-400"} />}

@@ -47,6 +47,9 @@ interface CallContextType {
     rejectVideoUpgrade: () => void
     startScreenShare: () => void
     stopScreenShare: () => void
+    kickParticipant: (userId: string) => void
+    blockParticipant: (userId: string) => void
+    blockedUsers: Set<string>
 }
 
 const CallContext = createContext<CallContextType | undefined>(undefined)
@@ -83,6 +86,8 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
     const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({})
     const localStreamRef = useRef<MediaStream | null>(null)
     const remoteStreamsRef = useRef<Record<string, MediaStream>>({})
+    const [blockedUsers, setBlockedUsers] = useState<Set<string>>(new Set())
+    const blockedUsersRef = useRef<Set<string>>(new Set())
     const [recordingStatus, setRecordingStatus] = useState(false)
 
     // Screen sharing refs
@@ -110,6 +115,9 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
     const audioContextRef = useRef<AudioContext | null>(null)
     const audioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null)
     const audioSourcesRef = useRef<Map<string, MediaStreamAudioSourceNode>>(new Map())
+    const recordCanvasRef = useRef<HTMLCanvasElement | null>(null)
+    const requestRef = useRef<number | null>(null)
+    const videoElementsRef = useRef<Map<string, HTMLVideoElement>>(new Map())
 
     const statusRef = useRef(callState.status)
     const callStateRef = useRef(callState)
@@ -236,6 +244,106 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         }
     }, [])
 
+    const getOrCreateVideoElement = useCallback((uid: string, stream: MediaStream) => {
+        let video = videoElementsRef.current.get(uid)
+        if (!video) {
+            video = document.createElement('video')
+            video.muted = true
+            video.playsInline = true
+            video.autoplay = true
+            videoElementsRef.current.set(uid, video)
+        }
+        if (video.srcObject !== stream) {
+            video.srcObject = stream
+            video.play().catch(e => console.warn('[CallManager] Video play failed for mixer:', e))
+        }
+        return video
+    }, [])
+
+    const renderRecordingFrame = useCallback(() => {
+        if (!isRecording.current || !recordCanvasRef.current) return
+
+        const canvas = recordCanvasRef.current
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+
+        const state = callStateRef.current
+        const activeParticipants = state.participants.filter(p => {
+            if (p.id === currentUser.id) return localStreamRef.current?.getVideoTracks().length! > 0 && !isCameraOff
+            return remoteStreamsRef.current[p.id]?.getVideoTracks().length! > 0 && !p.isCameraOff
+        })
+
+        // Background
+        ctx.fillStyle = '#0f172a' // Slate-900
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+        if (state.isScreenSharing) {
+            // Priority to Screen Share
+            const sharerId = state.screenSharingUserId!
+            let stream: MediaStream | null = null
+            if (sharerId === currentUser.id) stream = screenStreamRef.current
+            else stream = remoteStreamsRef.current[sharerId] // For now assume screen share comes through main stream or we need a way to identify it
+
+            if (stream) {
+                const video = getOrCreateVideoElement(sharerId + '-screen', stream)
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+                
+                // Draw participants as small overlays on the side? 
+                // For simplicity let's stick to screen share only if active, or a small grid at bottom
+                const thumbs = activeParticipants.filter(p => p.id !== sharerId)
+                if (thumbs.length > 0) {
+                    const thumbWidth = 240
+                    const thumbHeight = 135
+                    thumbs.forEach((p, i) => {
+                        const s = p.id === currentUser.id ? localStreamRef.current : remoteStreamsRef.current[p.id]
+                        if (s) {
+                            const v = getOrCreateVideoElement(p.id, s)
+                            ctx.drawImage(v, canvas.width - thumbWidth - 20, 20 + i * (thumbHeight + 10), thumbWidth, thumbHeight)
+                            // Draw name
+                            ctx.fillStyle = 'rgba(0,0,0,0.5)'
+                            ctx.fillRect(canvas.width - thumbWidth - 20, 20 + i * (thumbHeight + 10) + thumbHeight - 20, thumbWidth, 20)
+                            ctx.fillStyle = 'white'
+                            ctx.font = 'bold 12px Inter, sans-serif'
+                            ctx.fillText(p.name, canvas.width - thumbWidth - 15, 20 + i * (thumbHeight + 10) + thumbHeight - 5)
+                        }
+                    })
+                }
+            }
+        } else if (activeParticipants.length > 0) {
+            // Grid Layout
+            const count = activeParticipants.length
+            const cols = Math.ceil(Math.sqrt(count))
+            const rows = Math.ceil(count / cols)
+            const w = canvas.width / cols
+            const h = canvas.height / rows
+
+            activeParticipants.forEach((p, i) => {
+                const stream = p.id === currentUser.id ? localStreamRef.current : remoteStreamsRef.current[p.id]
+                if (stream) {
+                    const video = getOrCreateVideoElement(p.id, stream)
+                    const x = (i % cols) * w
+                    const y = Math.floor(i / cols) * h
+                    ctx.drawImage(video, x, y, w, h)
+
+                    // Overlay name
+                    ctx.fillStyle = 'rgba(0,0,0,0.5)'
+                    ctx.fillRect(x, y + h - 30, w, 30)
+                    ctx.fillStyle = 'white'
+                    ctx.font = 'bold 16px Inter, sans-serif'
+                    ctx.fillText(p.name, x + 10, y + h - 10)
+                }
+            })
+        } else {
+            // No video, just placeholder text
+            ctx.fillStyle = '#1e293b'
+            ctx.textAlign = 'center'
+            ctx.font = 'bold 24px Inter, sans-serif'
+            ctx.fillText('Appel en cours (Audio uniquement)', canvas.width / 2, canvas.height / 2)
+        }
+
+        requestRef.current = requestAnimationFrame(renderRecordingFrame)
+    }, [currentUser.id, getOrCreateVideoElement, isCameraOff])
+
     const startRecording = useCallback(() => {
         if (isRecording.current) return
         // Only the initiator records to save bandwidth/processing and avoid duplicates
@@ -270,10 +378,21 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
             })
 
             // 4. Combine with Video for Recording
-            const videoTracks = localStreamRef.current?.getVideoTracks() || []
+            if (!recordCanvasRef.current) {
+                const canvas = document.createElement('canvas')
+                canvas.width = 1280
+                canvas.height = 720
+                recordCanvasRef.current = canvas
+            }
+
+            // Start mixing loop
+            isRecording.current = true
+            renderRecordingFrame()
+
+            const videoStream = recordCanvasRef.current.captureStream(30)
             const combinedStream = new MediaStream([
                 ...dest.stream.getAudioTracks(),
-                ...(videoTracks.length > 0 ? [videoTracks[0]] : [])
+                ...videoStream.getVideoTracks()
             ])
 
             // 5. Setup MediaRecorder
@@ -317,9 +436,21 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         console.log('[CallManager] Stopping recording session')
         setRecordingStatus(false)
 
+        if (requestRef.current) {
+            cancelAnimationFrame(requestRef.current)
+            requestRef.current = null
+        }
+
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
             mediaRecorderRef.current.stop()
         }
+
+        // Cleanup Video elements
+        videoElementsRef.current.forEach(v => {
+            v.srcObject = null
+            v.remove()
+        })
+        videoElementsRef.current.clear()
 
         // Cleanup Audio Nodes but keep Context for potential restart? 
         // Better clean everything.
@@ -856,6 +987,38 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
         }
     }, [currentUser.id, broadcastSignal])
 
+    const kickParticipant = useCallback((userId: string) => {
+        const state = callStateRef.current
+        // Only host (initiator) can kick
+        if (state.isIncoming) {
+            console.warn('[CallManager] Only host can kick participants')
+            return
+        }
+
+        console.log(`[CallManager] Kicking participant: ${userId}`)
+        broadcastSignal('kick', currentUser.id, userId)
+        
+        // Remove from local state immediately
+        setCallState(prev => ({
+            ...prev,
+            participants: prev.participants.filter(p => p.id !== userId)
+        }))
+        
+        // Close connection
+        const pc = peerConnections.current.get(userId)
+        if (pc) {
+            pc.close()
+            peerConnections.current.delete(userId)
+        }
+    }, [currentUser.id, broadcastSignal])
+
+    const blockParticipant = useCallback((userId: string) => {
+        console.log(`[CallManager] Blocking participant: ${userId}`)
+        blockedUsersRef.current.add(userId)
+        setBlockedUsers(new Set(blockedUsersRef.current))
+        kickParticipant(userId)
+    }, [kickParticipant])
+
     useEffect(() => {
         const channel = supabase.channel('calls_v5', { config: { broadcast: { ack: true } } })
             .on('broadcast', { event: 'call-signal' }, async ({ payload }: { payload: any }) => {
@@ -867,6 +1030,11 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
 
                 switch (signal) {
                     case 'initiate':
+                        if (blockedUsersRef.current.has(from)) {
+                            console.warn(`[CallManager] Ignoring initiate from blocked user: ${from}`)
+                            broadcastSignal('busy', currentUser.id, from)
+                            return
+                        }
                         setCallState(prev => {
                             if (prev.isActive) { broadcastSignal('busy', currentUser.id, from); return prev }
                             playRingtone(); showNotification(`Appel ${type} entrant`, { body: `${metadata.name} vous appelle...`, isCall: true, tag: 'incoming-call' })
@@ -886,6 +1054,10 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                         callConversationIdRef.current = payload.conversationId; callStartTimeRef.current = Date.now(); callAnswerTimeRef.current = null
                         break
                     case 'invite':
+                        if (blockedUsersRef.current.has(from)) {
+                            console.warn(`[CallManager] Ignoring invite from blocked user: ${from}`)
+                            return
+                        }
                         setCallState(prev => {
                             if (prev.isActive) return prev
                             playRingtone(); showNotification(`Appel ${type} entrant`, { body: `${metadata.name} vous appelle...`, isCall: true, tag: 'incoming-call' })
@@ -968,6 +1140,13 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                             }))
                         }
                         break
+                    case 'kick':
+                        console.log('[CallManager] Kicked from call by host')
+                        showNotification('Expulsé de l\'appel', { body: 'Le responsable vous a retiré de l\'appel.' })
+                        cleanupCall()
+                        // Redirect to dashboard
+                        window.location.href = '/dashboard'
+                        break
                     case 'end':
                         stopRingtone()
                         const pc = peerConnections.current.get(from)
@@ -1002,7 +1181,8 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
             startCall, startGroupCall, inviteParticipant, acceptCall, rejectCall, endCall,
             callState, toggleMute, toggleCamera, isMuted, isCameraOff,
             requestVideoUpgrade, acceptVideoUpgrade, rejectVideoUpgrade,
-            startScreenShare, stopScreenShare
+            startScreenShare, stopScreenShare,
+            kickParticipant, blockParticipant, blockedUsers
         }}>
             {children}
             {callState.isActive && (
@@ -1016,6 +1196,9 @@ export function CallProvider({ children, currentUser }: { children: React.ReactN
                     isScreenSharing={callState.isScreenSharing} screenSharingUserId={callState.screenSharingUserId}
                     screenStream={screenStream}
                     isRecording={recordingStatus}
+                    onKick={kickParticipant}
+                    onBlock={blockParticipant}
+                    isCurrentUserHost={!callState.isIncoming}
                 />
             )}
         </CallContext.Provider>

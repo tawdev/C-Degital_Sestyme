@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, Maximize2, Minimize2, User, PictureInPicture, MoveDownLeft, UserPlus, Monitor, MonitorOff } from 'lucide-react'
+import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, Maximize2, Minimize2, User, PictureInPicture, MoveDownLeft, UserPlus, Monitor, MonitorOff, MoreVertical, Ban, UserX } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import InviteParticipantModal from './invite-participant-modal'
 import EmployeeAvatar from '@/components/employee-avatar'
 import { useCall } from '@/components/providers/call-provider'
@@ -30,6 +31,9 @@ interface CallOverlayProps {
     screenSharingUserId: string | null
     screenStream: MediaStream | null
     isRecording?: boolean
+    onKick?: (userId: string) => void
+    onBlock?: (userId: string) => void
+    isCurrentUserHost?: boolean
 }
 
 export default function CallOverlay({
@@ -53,8 +57,12 @@ export default function CallOverlay({
     isScreenSharing,
     screenSharingUserId,
     screenStream,
-    isRecording
+    isRecording,
+    onKick,
+    onBlock,
+    isCurrentUserHost
 }: CallOverlayProps) {
+    const [activeMenu, setActiveMenu] = useState<string | null>(null)
     useEffect(() => {
         console.log('[CallOverlay] PROPS UPDATE:', {
             isScreenSharing, screenSharingUserId, currentUserId,
@@ -326,7 +334,6 @@ export default function CallOverlay({
                                             ) : (
                                                 <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-gradient-to-br from-gray-800 to-gray-950">
                                                     <EmployeeAvatar avatarUrl={p.avatar} fullName={p.name} className="w-24 h-24 text-2xl border-2 border-indigo-500/20 shadow-xl" />
-                                                    <p className="text-white font-medium">{p.name} {isLocal && '(Moi)'}</p>
                                                 </div>
                                             )}
                                             {!isLocal && (
@@ -336,9 +343,80 @@ export default function CallOverlay({
                                             )}
                                             <div className="absolute bottom-4 left-4 px-3 py-1.5 bg-black/60 backdrop-blur-md rounded-xl border border-white/10 flex items-center gap-2">
                                                 <div className={`w-1.5 h-1.5 rounded-full ${stream ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}></div>
-                                                <p className="text-white text-[11px] font-bold uppercase tracking-wider">{p.name} {isLocal && '(Moi)'}</p>
+                                                <div className="flex flex-col">
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="text-white text-[11px] font-bold uppercase tracking-wider">{p.name} {isLocal && '(Moi)'}</p>
+                                                        {((!state.isIncoming && isLocal) || (state.isIncoming && p.id === state.caller?.id)) && (
+                                                            <span className="px-1.5 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/30 text-[7px] font-black text-amber-500 uppercase tracking-widest">
+                                                                Host
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
                                                 {isAudioMuted && <MicOff className="w-3 h-3 text-red-400" />}
                                             </div>
+
+                                            {/* Host Management Controls */}
+                                            {isCurrentUserHost && !isLocal && (
+                                                <div className="absolute top-4 right-4 z-30">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            setActiveMenu(activeMenu === p.id ? null : p.id)
+                                                        }}
+                                                        className="p-2 bg-black/40 hover:bg-black/60 backdrop-blur-md rounded-xl text-white transition-opacity border border-white/10 opacity-0 group-hover/video:opacity-100"
+                                                    >
+                                                        <MoreVertical className="w-5 h-5" />
+                                                    </button>
+
+                                                    <AnimatePresence>
+                                                        {activeMenu === p.id && (
+                                                            <>
+                                                                <motion.div
+                                                                    initial={{ opacity: 0 }}
+                                                                    animate={{ opacity: 1 }}
+                                                                    exit={{ opacity: 0 }}
+                                                                    className="fixed inset-0 z-40"
+                                                                    onClick={() => setActiveMenu(null)}
+                                                                />
+                                                                <motion.div
+                                                                    initial={{ opacity: 0, scale: 0.9, y: -10 }}
+                                                                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                                    exit={{ opacity: 0, scale: 0.9, y: -10 }}
+                                                                    className="absolute right-0 mt-2 w-48 bg-gray-900/95 backdrop-blur-xl border border-white/5 rounded-2xl shadow-2xl z-50 overflow-hidden"
+                                                                >
+                                                                    <div className="p-2 space-y-1">
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                if (window.confirm(`Expulser ${p.name} ?`)) {
+                                                                                    onKick?.(p.id)
+                                                                                }
+                                                                                setActiveMenu(null)
+                                                                            }}
+                                                                            className="w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold text-red-500 hover:bg-red-500/10 rounded-xl transition-colors"
+                                                                        >
+                                                                            <UserX className="w-4 h-4" />
+                                                                            Expulser
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                if (window.confirm(`Bloquer ${p.name} définitivement pour cette session ?`)) {
+                                                                                    onBlock?.(p.id)
+                                                                                }
+                                                                                setActiveMenu(null)
+                                                                            }}
+                                                                            className="w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold text-gray-300 hover:bg-white/10 rounded-xl transition-colors"
+                                                                        >
+                                                                            <Ban className="w-4 h-4" />
+                                                                            Bloquer l'accès
+                                                                        </button>
+                                                                    </div>
+                                                                </motion.div>
+                                                            </>
+                                                        )}
+                                                    </AnimatePresence>
+                                                </div>
+                                            )}
                                         </div>
                                     )
                                 })}
@@ -475,8 +553,8 @@ export default function CallOverlay({
                                         </button>
                                     )}
 
-                                    {/* Add Participant Button */}
-                                    {isConnected && (
+                                    {/* Add Participant Button - Restricted to Host */}
+                                    {isConnected && isCurrentUserHost && (
                                         <button
                                             onClick={() => setShowInviteModal(true)}
                                             className="w-14 h-14 flex items-center justify-center rounded-full transition-all border bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500 hover:text-emerald-300"

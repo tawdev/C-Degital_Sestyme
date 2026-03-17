@@ -9,6 +9,8 @@ import { useNotifications } from './notification-context'
 export type PresenceState = {
     user_id: string
     online_at: string
+    full_name?: string
+    avatar_url?: string | null
 }
 
 interface RealtimeContextType {
@@ -20,7 +22,7 @@ interface RealtimeContextType {
 
 const RealtimeContext = createContext<RealtimeContextType | undefined>(undefined)
 
-export function RealtimeProvider({ children, currentUserId }: { children: React.ReactNode, currentUserId: string }) {
+export function RealtimeProvider({ children, currentUser }: { children: React.ReactNode, currentUser: { id: string, full_name?: string, avatar_url?: string | null } }) {
     const [onlineUsers, setOnlineUsers] = useState<Record<string, PresenceState[]>>({})
     const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
     const activeConvRef = useRef<string | null>(null)
@@ -28,6 +30,8 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
     const supabase = createClient()
     const { playNotificationSound } = useAudio()
     const { showNotification } = useNotifications()
+
+    const currentUserId = currentUser?.id
 
     const updateDbStatus = useCallback(async (online: boolean) => {
         if (!currentUserId) return
@@ -275,7 +279,12 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
             .subscribe(async (status: any) => {
                 if (status === 'SUBSCRIBED') {
                     console.log('[Realtime] Subscribed to main-realtime')
-                    await channel.track({ user_id: currentUserId, online_at: new Date().toISOString() })
+                    await channel.track({
+                        user_id: currentUserId,
+                        online_at: new Date().toISOString(),
+                        full_name: currentUser.full_name,
+                        avatar_url: currentUser.avatar_url
+                    })
                 }
             })
 
@@ -283,7 +292,7 @@ export function RealtimeProvider({ children, currentUserId }: { children: React.
             console.log('[Realtime] Unsubscribing main-realtime')
             supabase.removeChannel(channel)
         }
-    }, [currentUserId, supabase, showNotification, playNotificationSound])
+    }, [currentUserId, currentUser, supabase, showNotification, playNotificationSound])
 
     const isUserOnline = useCallback((userId: string) => {
         return !!onlineUsers[userId]

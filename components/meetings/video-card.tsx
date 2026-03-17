@@ -18,6 +18,9 @@ interface VideoCardProps {
     isMainStage?: boolean // True if this video is the "Presenting" focused one
     isActiveSpeaker?: boolean
     isHandRaised?: boolean
+    isCurrentUserHost?: boolean
+    onKick?: (id: string) => void
+    onBlock?: (id: string) => void
     className?: string
 }
 
@@ -38,10 +41,14 @@ export const VideoCard = ({
     isMainStage = false,
     isActiveSpeaker = false,
     isHandRaised = false,
+    isCurrentUserHost = false,
+    onKick,
+    onBlock,
     className
 }: VideoCardProps) => {
     const videoRef = useRef<HTMLVideoElement>(null)
     const [reactions, setReactions] = useState<Reaction[]>([])
+    const [showMenu, setShowMenu] = useState(false)
 
     useEffect(() => {
         if (videoRef.current && stream) {
@@ -203,6 +210,67 @@ export const VideoCard = ({
             {isHandRaised && (
                 <div className="absolute top-4 left-4 p-2 bg-amber-500 rounded-xl shadow-xl shadow-amber-500/20 z-[25] border border-white/10 animate-bounce cursor-default">
                     <span className="text-lg">✋</span>
+                </div>
+            )}
+
+            {/* Host Options Menu */}
+            {isCurrentUserHost && !isLocal && (
+                <div className="absolute top-4 right-4 z-30 pointer-events-auto">
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowMenu(!showMenu)}
+                            className="p-2 bg-black/20 hover:bg-black/40 backdrop-blur-md rounded-xl text-white transition-all border border-white/10 opacity-0 group-hover:opacity-100"
+                        >
+                            <MoreVertical className="w-5 h-5" />
+                        </button>
+
+                        <AnimatePresence>
+                            {showMenu && (
+                                <>
+                                    <motion.div
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        exit={{ opacity: 0 }}
+                                        className="fixed inset-0 z-40"
+                                        onClick={() => setShowMenu(false)}
+                                    />
+                                    <motion.div
+                                        initial={{ opacity: 0, scale: 0.9, y: -10 }}
+                                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                                        exit={{ opacity: 0, scale: 0.9, y: -10 }}
+                                        className="absolute right-0 mt-2 w-48 bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl border border-gray-100 dark:border-white/5 rounded-2xl shadow-2xl z-50 overflow-hidden"
+                                    >
+                                        <div className="p-2 space-y-1">
+                                            <button
+                                                onClick={() => {
+                                                    if (window.confirm(`Expulser ${participant.name} ?`)) {
+                                                        onKick?.(participant.id)
+                                                    }
+                                                    setShowMenu(false)
+                                                }}
+                                                className="w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-colors"
+                                            >
+                                                <Ban className="w-4 h-4" />
+                                                Expulser
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    if (window.confirm(`Bloquer ${participant.name} définitivement pour cette session ?`)) {
+                                                        onBlock?.(participant.id)
+                                                    }
+                                                    setShowMenu(false)
+                                                }}
+                                                className="w-full flex items-center gap-3 px-3 py-2.5 text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/10 rounded-xl transition-colors"
+                                            >
+                                                <MoreVertical className="w-4 h-4 rotate-90" />
+                                                Bloquer l'accès
+                                            </button>
+                                        </div>
+                                    </motion.div>
+                                </>
+                            )}
+                        </AnimatePresence>
+                    </div>
                 </div>
             )}
         </motion.div>

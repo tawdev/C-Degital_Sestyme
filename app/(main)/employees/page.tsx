@@ -5,6 +5,8 @@ import { deleteEmployee } from './actions'
 import { getSession } from '@/app/auth/actions'
 import { redirect } from 'next/navigation'
 import EmployeeAvatar from '@/components/employee-avatar'
+import EmployeeStatus from '@/components/employees/employee-status'
+import EmployeeActions from '@/components/employees/employee-actions'
 
 
 interface Employee {
@@ -173,10 +175,7 @@ export default async function EmployeesPage() {
                                             ) : (
                                                 <span className="text-[10px] font-bold text-gray-400 dark:text-gray-600 italic uppercase">Aucun rôle assigné</span>
                                             )}
-                                            <div className="flex items-center gap-2">
-                                                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)] animate-pulse"></div>
-                                                <span className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">Actif</span>
-                                            </div>
+                                             <EmployeeStatus userId={employee.id} />
                                         </div>
                                     </td>
                                     <td className="px-8 py-6 whitespace-nowrap">
@@ -194,31 +193,38 @@ export default async function EmployeesPage() {
                                         </div>
                                     </td>
                                     <td className="px-8 py-6 whitespace-nowrap text-right text-sm font-medium">
-                                        <div className="flex justify-end gap-3 translate-x-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-500">
-                                            <Link
-                                                href={`/employees/${employee.id}/view`}
-                                                className="p-3 bg-white dark:bg-white/5 text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-white border border-gray-100 dark:border-white/10 rounded-2xl transition-all shadow-sm hover:shadow-md"
-                                                title="Voir le profil"
-                                            >
-                                                <Eye className="h-5 w-5" />
-                                            </Link>
-                                            <Link
-                                                href={`/employees/${employee.id}`}
-                                                className="p-3 bg-indigo-50 dark:bg-indigo-400/10 text-indigo-400 dark:text-indigo-300 hover:text-indigo-700 dark:hover:text-white border border-indigo-100 dark:border-indigo-400/20 rounded-2xl transition-all shadow-sm hover:shadow-md"
-                                                title="Modifier le membre"
-                                            >
-                                                <Edit className="h-5 w-5" />
-                                            </Link>
-                                            <form action={deleteEmployee} className="inline-block">
-                                                <input type="hidden" name="id" value={employee.id} />
-                                                <button
-                                                    type="submit"
-                                                    className="p-3 bg-red-50 dark:bg-red-400/10 text-red-400 dark:text-red-300 hover:text-red-700 dark:hover:text-white border border-red-100 dark:border-red-400/20 rounded-2xl transition-all shadow-sm hover:shadow-md"
-                                                    title="Supprimer le membre"
+                                        <div className="flex justify-end items-center gap-4">
+                                            <EmployeeActions 
+                                                employeeId={employee.id}
+                                                employeeName={employee.full_name}
+                                                employeeAvatar={employee.avatar_url}
+                                            />
+                                            <div className="flex justify-end gap-3 translate-x-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-500">
+                                                <Link
+                                                    href={`/employees/${employee.id}/view`}
+                                                    className="p-3 bg-white dark:bg-white/5 text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-white border border-gray-100 dark:border-white/10 rounded-2xl transition-all shadow-sm hover:shadow-md"
+                                                    title="Voir le profil"
                                                 >
-                                                    <Trash2 className="h-5 w-5" />
-                                                </button>
-                                            </form>
+                                                    <Eye className="h-5 w-5" />
+                                                </Link>
+                                                <Link
+                                                    href={`/employees/${employee.id}`}
+                                                    className="p-3 bg-indigo-50 dark:bg-indigo-400/10 text-indigo-400 dark:text-indigo-300 hover:text-indigo-700 dark:hover:text-white border border-indigo-100 dark:border-indigo-400/20 rounded-2xl transition-all shadow-sm hover:shadow-md"
+                                                    title="Modifier le membre"
+                                                >
+                                                    <Edit className="h-5 w-5" />
+                                                </Link>
+                                                <form action={deleteEmployee} className="inline-block">
+                                                    <input type="hidden" name="id" value={employee.id} />
+                                                    <button
+                                                        type="submit"
+                                                        className="p-3 bg-red-50 dark:bg-red-400/10 text-red-400 dark:text-red-300 hover:text-red-700 dark:hover:text-white border border-red-100 dark:border-red-400/20 rounded-2xl transition-all shadow-sm hover:shadow-md"
+                                                        title="Supprimer le membre"
+                                                    >
+                                                        <Trash2 className="h-5 w-5" />
+                                                    </button>
+                                                </form>
+                                            </div>
                                         </div>
                                     </td>
                                 </tr>

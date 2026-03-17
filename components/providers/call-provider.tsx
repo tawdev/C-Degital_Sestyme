@@ -69,6 +69,8 @@ interface CallContextType {
     setShowChat: (show: boolean) => void
     muteParticipant: (userId: string) => void
     kickParticipant: (userId: string) => void
+    blockParticipant: (userId: string) => void
+    blockedUsers: Set<string>
     toggleRaiseHand: () => void
     sendReaction: (emoji: string) => void
     handsRaised: Set<string>
@@ -133,10 +135,16 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     const channelRef = useRef<any>(null)
     const lobbyIntervalRef = useRef<NodeJS.Timeout | null>(null)
     const isWaitingRef = useRef(false)
+    const blockedUsersRef = useRef<Set<string>>(new Set())
+    const [blockedUsers, setBlockedUsers] = useState<Set<string>>(new Set())
     const audioContextRef = useRef<AudioContext | null>(null)
     const analysersRef = useRef<Map<string, AnalyserNode>>(new Map())
     const statsIntervalRef = useRef<NodeJS.Timeout | null>(null)
     const recordingDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null)
+    const recordCanvasRef = useRef<HTMLCanvasElement | null>(null)
+    const requestRef = useRef<number | null>(null)
+    const videoElementsRef = useRef<Map<string, HTMLVideoElement>>(new Map())
+    const audioSourcesRef = useRef<Map<string, MediaStreamAudioSourceNode>>(new Map())
 
     // Refs for state that need to be accessed in closures without stale values
     const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map())
@@ -270,6 +278,103 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         }, GRACE_PERIOD)
         leaveTimeouts.current.set(userId, timeout)
     }
+
+    const getOrCreateVideoElement = useCallback((uid: string, stream: MediaStream) => {
+        let video = videoElementsRef.current.get(uid)
+        if (!video) {
+            video = document.createElement('video')
+            video.muted = true
+            video.playsInline = true
+            video.autoplay = true
+            videoElementsRef.current.set(uid, video)
+        }
+        if (video.srcObject !== stream) {
+            video.srcObject = stream
+            video.play().catch(e => console.warn('[CallProvider] Video play failed for mixer:', e))
+        }
+        return video
+    }, [])
+
+    const renderRecordingFrame = useCallback(() => {
+        if (!isRecordingRef.current || !recordCanvasRef.current) return
+
+        const canvas = recordCanvasRef.current
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+
+        const state = participantStates
+
+        // Background
+        ctx.fillStyle = '#0f172a' // Slate-900
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+        const activeParticipants = participants.filter(p => {
+            if (p.id === currentUser?.id) return localStreamRef.current?.getVideoTracks().length! > 0 && !isCameraOffRef.current
+            const s = state.get(p.id)
+            return remoteStreamsRef.current.get(p.id)?.getVideoTracks().length! > 0 && !s?.isCameraOff
+        })
+
+        if (sharingUser) {
+            // Priority to Screen Share
+            let stream: MediaStream | null = null
+            if (sharingUser === currentUser?.id) stream = screenStreamRef.current
+            else stream = remoteScreenStreamsRef.current.get(sharingUser) || remoteStreamsRef.current.get(sharingUser) || null
+
+            if (stream) {
+                const video = getOrCreateVideoElement(sharingUser + '-screen', stream)
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+                
+                // Small overlays for participants
+                const thumbs = activeParticipants.filter(p => p.id !== sharingUser)
+                if (thumbs.length > 0) {
+                    const thumbWidth = 240
+                    const thumbHeight = 135
+                    thumbs.forEach((p, i) => {
+                        const s = p.id === currentUser?.id ? localStreamRef.current : remoteStreamsRef.current.get(p.id)
+                        if (s) {
+                            const v = getOrCreateVideoElement(p.id, s)
+                            ctx.drawImage(v, canvas.width - thumbWidth - 20, 20 + i * (thumbHeight + 10), thumbWidth, thumbHeight)
+                            ctx.fillStyle = 'rgba(0,0,0,0.5)'
+                            ctx.fillRect(canvas.width - thumbWidth - 20, 20 + i * (thumbHeight + 10) + thumbHeight - 20, thumbWidth, 20)
+                            ctx.fillStyle = 'white'
+                            ctx.font = 'bold 12px Inter, sans-serif'
+                            ctx.fillText(p.name, canvas.width - thumbWidth - 15, 20 + i * (thumbHeight + 10) + thumbHeight - 5)
+                        }
+                    })
+                }
+            }
+        } else if (activeParticipants.length > 0) {
+            // Grid Layout
+            const count = activeParticipants.length
+            const cols = Math.ceil(Math.sqrt(count))
+            const rows = Math.ceil(count / cols)
+            const w = canvas.width / cols
+            const h = canvas.height / rows
+
+            activeParticipants.forEach((p, i) => {
+                const stream = p.id === currentUser?.id ? localStreamRef.current : remoteStreamsRef.current.get(p.id)
+                if (stream) {
+                    const video = getOrCreateVideoElement(p.id, stream)
+                    const x = (i % cols) * w
+                    const y = Math.floor(i / cols) * h
+                    ctx.drawImage(video, x, y, w, h)
+
+                    ctx.fillStyle = 'rgba(0,0,0,0.5)'
+                    ctx.fillRect(x, y + h - 30, w, 30)
+                    ctx.fillStyle = 'white'
+                    ctx.font = 'bold 16px Inter, sans-serif'
+                    ctx.fillText(p.name, x + 10, y + h - 10)
+                }
+            })
+        } else {
+            ctx.fillStyle = '#1e293b'
+            ctx.textAlign = 'center'
+            ctx.font = 'bold 24px Inter, sans-serif'
+            ctx.fillText('Meeting en cours (Audio uniquement)', canvas.width / 2, canvas.height / 2)
+        }
+
+        requestRef.current = requestAnimationFrame(renderRecordingFrame)
+    }, [currentUser, participants, participantStates, sharingUser, getOrCreateVideoElement])
 
     const sendSignal = async (to: string, data: any, fromId: string) => {
         if (!channelRef.current) return
@@ -462,6 +567,17 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
                 }
             } else if (type === 'leave') {
                 handleParticipantLeave(from)
+            } else if (type === 'command') {
+                const { action } = payload
+                if (action === 'kick') {
+                    console.log('[CallProvider] I was kicked by host!')
+                    leaveMeeting()
+                    router.push('/chat')
+                } else if (action === 'block') {
+                    console.log('[CallProvider] I was blocked and kicked by host!')
+                    leaveMeeting()
+                    router.push('/chat')
+                }
             }
         } catch (err) {
             console.error('[CallProvider] Signaling error:', err, 'Type:', type)
@@ -499,7 +615,20 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
         channel
             .on('broadcast', { event: 'signal' }, ({ payload }: { payload: any }) => {
+                const isBlocked = blockedUsersRef.current.has(payload.from)
+                if (isBlocked) {
+                    console.warn('[CallProvider] Ignoring signal from blocked user:', payload.from)
+                    return
+                }
                 if (payload.to === user.id || payload.to === 'everyone') handleSignal(payload, user.id)
+            })
+            .on('broadcast', { event: 'command' }, ({ payload }: { payload: any }) => {
+                if (payload.to === user.id) {
+                    if (payload.action === 'kick' || payload.action === 'block') {
+                        leaveMeeting()
+                        router.push('/chat')
+                    }
+                }
             })
             .on('broadcast', { event: 'chat' }, ({ payload }: { payload: any }) => {
                 setMessages(prev => {
@@ -887,8 +1016,116 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         // Notify others
         sendSignal('everyone', { type: 'screen-sharing', active: false }, currentUser?.id)
     }
-    const startRecording = () => { }
-    const stopRecording = () => { }
+    const startRecording = async () => {
+        if (isRecording) return
+        console.log('[CallProvider] Starting advanced recording...')
+
+        try {
+            // 1. Initialize Audio Context for mixing
+            if (!audioContextRef.current) audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+            const ctx = audioContextRef.current
+            const dest = ctx.createMediaStreamDestination()
+            recordingDestinationRef.current = dest
+
+            // 2. Add Local Audio
+            if (localStreamRef.current) {
+                const source = ctx.createMediaStreamSource(localStreamRef.current)
+                source.connect(dest)
+            }
+
+            // 3. Add Remote Audios
+            remoteStreamsRef.current.forEach((stream, uid) => {
+                if (stream.getAudioTracks().length > 0) {
+                    const source = ctx.createMediaStreamSource(stream)
+                    source.connect(dest)
+                }
+            })
+
+            // 4. Initialize Canvas for video mixing
+            if (!recordCanvasRef.current) {
+                const canvas = document.createElement('canvas')
+                canvas.width = 1280
+                canvas.height = 720
+                recordCanvasRef.current = canvas
+            }
+
+            setIsRecording(true)
+            renderRecordingFrame()
+
+            const videoStream = recordCanvasRef.current.captureStream(30)
+            const combinedStream = new MediaStream([
+                ...dest.stream.getAudioTracks(),
+                ...videoStream.getVideoTracks()
+            ])
+
+            // 5. Setup MediaRecorder
+            const recorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp9,opus' })
+            mediaRecorderRef.current = recorder
+            recordingChunks.current = []
+
+            recorder.ondataavailable = (e) => {
+                if (e.data.size > 0) recordingChunks.current.push(e.data)
+            }
+
+            recorder.onstop = async () => {
+                console.log('[CallProvider] Recording stopped, saving...')
+                const blob = new Blob(recordingChunks.current, { type: 'video/webm' })
+                const file = new File([blob], `meeting-${meetingId}.webm`, { type: 'video/webm' })
+
+                const formData = new FormData()
+                formData.append('meetingId', meetingId!)
+                formData.append('file', file)
+
+                const result = await saveMeetingRecording(formData)
+                if (result.success) {
+                    console.log('[CallProvider] Meeting recording saved successfully')
+                } else {
+                    console.error('[CallProvider] Failed to save meeting recording:', result.error)
+                }
+            }
+
+            recorder.start(1000)
+            setRecordingTime(0)
+            if (timerRef.current) clearInterval(timerRef.current)
+            timerRef.current = setInterval(() => setRecordingTime(prev => prev + 1), 1000)
+
+            // Notify others if needed (optional)
+            sendSignal('everyone', { type: 'recording-state', isRecording: true }, currentUser.id)
+
+        } catch (err) {
+            console.error('[CallProvider] Recording failed to start:', err)
+            setIsRecording(false)
+        }
+    }
+
+    const stopRecording = () => {
+        if (!isRecording) return
+        console.log('[CallProvider] Stopping recording session')
+        setIsRecording(false)
+
+        if (requestRef.current) {
+            cancelAnimationFrame(requestRef.current)
+            requestRef.current = null
+        }
+
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.stop()
+        }
+
+        if (timerRef.current) {
+            clearInterval(timerRef.current)
+            timerRef.current = null
+        }
+
+        // Cleanup video elements for next time
+        videoElementsRef.current.forEach(v => {
+            v.srcObject = null
+            v.remove()
+        })
+        videoElementsRef.current.clear()
+
+        sendSignal('everyone', { type: 'recording-state', isRecording: false }, currentUser.id)
+    }
     const sendMessage = async (content: string) => {
         if (!currentUser || !meetingId) return
         const msg = {
@@ -920,7 +1157,31 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         }
     }
     const muteParticipant = (userId: string) => sendSignal(userId, { type: 'command', action: 'mute' }, currentUser.id)
-    const kickParticipant = (userId: string) => sendSignal(userId, { type: 'command', action: 'kick' }, currentUser.id)
+    
+    const kickParticipant = async (userId: string) => {
+        // Security check
+        const isHost = meeting?.host_id === currentUser?.id || currentUser?.role?.toLowerCase() === 'administrator'
+        if (!isHost) return
+
+        console.log('[CallProvider] Kicking participant:', userId)
+        await sendSignal(userId, { type: 'command', action: 'kick' }, currentUser.id)
+        handleParticipantLeave(userId) // Optimistic UI
+    }
+
+    const blockParticipant = async (userId: string) => {
+        const isHost = meeting?.host_id === currentUser?.id || currentUser?.role?.toLowerCase() === 'administrator'
+        if (!isHost) return
+
+        console.log('[CallProvider] Blocking participant:', userId)
+        blockedUsersRef.current.add(userId)
+        setBlockedUsers(new Set(blockedUsersRef.current))
+        
+        await sendSignal(userId, { type: 'command', action: 'block' }, currentUser.id)
+        handleParticipantLeave(userId)
+    }
+
+    const kickParticipantRefactored = (userId: string) => kickParticipant(userId)
+
     const toggleRaiseHand = () => {
         const raised = !handsRaised.has(currentUser.id)
         setHandsRaised(prev => {
@@ -940,7 +1201,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
             localStream, screenStream, sharingUser, viewMode, setViewMode, joinRequests, admitParticipant,
             isWaiting, polls, createPoll, voteInPoll, closePoll, joinMeeting, leaveMeeting, toggleMute,
             toggleCamera, toggleScreenShare, startRecording, stopRecording, sendMessage, setShowChat,
-            muteParticipant, kickParticipant, toggleRaiseHand, sendReaction, handsRaised, endCall, isInCall,
+            muteParticipant, kickParticipant, blockParticipant, blockedUsers, toggleRaiseHand, sendReaction, handsRaised, endCall, isInCall,
             isMinimized, setIsMinimized
         }}>
             {children}
